@@ -44,6 +44,13 @@ export default function MeetingRoomPage() {
     }
   }, [state.phase, client.connectionStatus, navigate, state.room?.meetingCode, client]);
 
+  // Hoist useMemo above the early return — hooks must be called unconditionally.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const participantsList = useMemo(
+    () => state.room ? Object.values(state.room.participants) : [],
+    [state.room?.participants]
+  );
+
   if (!state.room) {
     return <MeetingRoomSkeleton />;
   }
@@ -55,12 +62,6 @@ export default function MeetingRoomPage() {
   const selfParticipant = state.selfPeerId ? state.room.participants[state.selfPeerId] : null;
   const selfName = selfParticipant?.displayName ?? 'You';
   const selfAvatar = selfParticipant ? parseProfile(selfParticipant.json)?.photo : undefined;
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const participantsList = useMemo(
-    () => Object.values(state.room!.participants),
-    [state.room?.participants]
-  );
 
   const selectedParticipant = selectedNodeId ? state.room.participants[selectedNodeId] : null;
 
@@ -171,6 +172,42 @@ export default function MeetingRoomPage() {
       </div>
 
       <ReactionFloats />
+
+      {/* ── Mobile bottom nav (hidden on desktop via CSS) ─────────── */}
+      <div className="mr-mobile-nav">
+        <button
+          className={`mr-mobile-nav-btn${showChat ? ' active' : ''}`}
+          onClick={() => setShowChat(!showChat)}
+          aria-label="Chat"
+        >
+          <span className="mr-mobile-nav-icon">💬</span>
+          <span className="mr-mobile-nav-label">Chat</span>
+        </button>
+        <button
+          className={`mr-mobile-nav-btn${showSidebar ? ' active' : ''}`}
+          onClick={() => setSidebarOpen(!showSidebar)}
+          aria-label="Participants"
+        >
+          <span className="mr-mobile-nav-icon">👥</span>
+          <span className="mr-mobile-nav-label">People</span>
+        </button>
+        <button
+          className="mr-mobile-nav-btn mr-mobile-nav-btn--react"
+          aria-label="Reactions"
+          style={{ pointerEvents: 'none', opacity: 0.4 }}
+        >
+          <span className="mr-mobile-nav-icon">🎉</span>
+          <span className="mr-mobile-nav-label">React ↑</span>
+        </button>
+        <button
+          className="mr-mobile-nav-btn mr-mobile-nav-btn--danger"
+          onClick={() => { client.disconnect(); navigate('/'); }}
+          aria-label="Leave"
+        >
+          <span className="mr-mobile-nav-icon">✕</span>
+          <span className="mr-mobile-nav-label">Leave</span>
+        </button>
+      </div>
 
       <ReactionBar
         selfPeerId={state.selfPeerId}

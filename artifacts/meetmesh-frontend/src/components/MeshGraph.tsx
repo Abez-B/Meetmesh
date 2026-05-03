@@ -104,8 +104,11 @@ function MeshGraphInner({
 
   // refreshKey bumps any time the node list or visited state changes,
   // so the animation loop restarts from any settled state.
-  const [nodeCount,   setNodeCount]   = useState(0);
-  const [refreshKey,  setRefreshKey]  = useState(0);
+  const [nodeCount,      setNodeCount]      = useState(0);
+  const [refreshKey,     setRefreshKey]     = useState(0);
+  // containerScale drives both the physics spring targets and the SVG ring guides,
+  // so they stay in sync when the viewport is resized (e.g. mobile vs desktop).
+  const [containerScale, setContainerScale] = useState(1);
 
   // Hover tooltip — lightweight name+role popover shown without a click
   const [tooltip, setTooltip] = useState<{
@@ -146,15 +149,26 @@ function MeshGraphInner({
   }, []);
 
   // ── Position relaxation ────────────────────────────────────────────────────
-  // Returns total movement this step (used to detect settling).
-  // IMPORTANT: no velocity — each correction is ≤ SPRING_STEP × error,
-  // so the system provably converges without oscillation.
+  // All ring distances and clearances are computed dynamically from the container
+  // size so the graph automatically compresses on small / mobile viewports.
+  // No velocity — each correction is ≤ SPRING_STEP × error, so it converges.
   const relaxStep = useCallback((): number => {
     const nodes   = nodesRef.current;
     const nonHost = nodes.filter(n => n.role !== 'Host');
     const visited  = nonHost.filter(n => n.visited);
     const pausedId = hoveredIdRef.current;
     let totalMov   = 0;
+
+    // Scale all spatial constants proportionally to the container's short side.
+    // 560 px is the "canonical" size the original constants were tuned for.
+    const containerShort = Math.min(dimsRef.current.width, dimsRef.current.height);
+    const gs  = Math.max(0.28, Math.min(1.0, containerShort / 560)); // graph scale
+    const sBase    = RING_BASE    * gs;
+    const sGap     = RING_GAP     * gs;
+    const sMin     = MIN_DIST     * gs;
+    const sCluster = CLUSTER_REST * gs;
+    const sCursorD = CURSOR_DIST  * gs;
+    const sCursorDD= CURSOR_DEAD  * gs;
 
     for (let i = 0; i < nonHost.length; i++) {
       const node = nonHost[i];
@@ -163,10 +177,11 @@ function MeshGraphInner({
       let dx = 0;
       let dy = 0;
 
-      // 1. Radial spring — pull/push toward this node's ring radius
-      const { restDist, ringIndex, ringCount } = node;
+      // 1. Radial spring — pull/push toward this node's scaled ring radius
+      const { ringIndex, ringCount } = node;
+      const scaledRest = sBase + ringIndex * sGap;
       const dist = Math.sqrt(node.x * node.x + node.y * node.y) || 0.01;
-      const springErr = dist - restDist;
+      const springErr = dist - scaledRest;
       const sc = springErr * SPRING_STEP;
       dx -= sc * (node.x / dist);
       dy -= sc * (node.y / dist);
@@ -181,11 +196,11 @@ function MeshGraphInner({
         const rd  = Math.sqrt(rdx * rdx + rdy * rdy) || 0.01;
         // Ideal chord distance for even angular spacing within a ring:
         //   chord = 2r × sin(π / n)   →  use 85 % to allow organic bunching
-        const sameRing       = o.ringIndex === ringIndex;
-        const ringSpacing    = sameRing && ringCount > 1
-          ? 2 * restDist * Math.sin(Math.PI / ringCount) * 0.85
+        const sameRing    = o.ringIndex === ringIndex;
+        const ringSpacing = sameRing && ringCount > 1
+          ? 2 * scaledRest * Math.sin(Math.PI / ringCount) * 0.85
           : 0;
-        const effectiveMin   = Math.max(MIN_DIST, ringSpacing);
+        const effectiveMin = Math.max(sMin, ringSpacing);
         if (rd < effectiveMin) {
           const push = (effectiveMin - rd) * 0.5;
           dx += push * (rdx / rd);
@@ -201,8 +216,8 @@ function MeshGraphInner({
           const cdx  = o.x - node.x;
           const cdy  = o.y - node.y;
           const cd   = Math.sqrt(cdx * cdx + cdy * cdy) || 0.01;
-          if (cd > CLUSTER_REST) {
-            const pull = (cd - CLUSTER_REST) * CLUSTER_STEP;
+          if (cd > sCluster) {
+            const pull = (cd - sCluster) * CLUSTER_STEP;
             dx += pull * (cdx / cd);
             dy += pull * (cdy / cd);
           }
@@ -210,14 +225,13 @@ function MeshGraphInner({
       }
 
       // 4. Cursor repulsion — gentle nudge only outside the dead zone.
-      //    Inside CURSOR_DEAD the node is left alone so it can be hovered/clicked.
       const mouse = mouseRef.current;
       if (mouse) {
         const mdx = node.x - mouse.x;
         const mdy = node.y - mouse.y;
         const md  = Math.sqrt(mdx * mdx + mdy * mdy) || 0.01;
-        if (md > CURSOR_DEAD && md < CURSOR_DIST) {
-          const push = (CURSOR_DIST - md) * CURSOR_STR;
+        if (md > sCursorDD && md < sCursorD) {
+          const push = (sCursorD - md) * CURSOR_STR;
           dx += push * (mdx / md);
           dy += push * (mdy / md);
         }
@@ -355,6 +369,9 @@ function MeshGraphInner({
       dimsRef.current = { width: w, height: h };
       svgRef.current?.setAttribute('viewBox', `0 0 ${w} ${h}`);
       applyTransform({ x: w / 2, y: h / 2, k: transformRef.current.k });
+      // Update containerScale so ring guides in React state stay in sync.
+      const gs = Math.max(0.28, Math.min(1.0, Math.min(w, h) / 560));
+      setContainerScale(gs);
       relaxStep(); flushPositions();
     };
     const throttled = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
@@ -478,12 +495,11 @@ function MeshGraphInner({
 
           {/* ── Ring guides — faint concentric tier boundaries ──────── */}
           {(() => {
-            // Collect unique rings from current nodes
+            // Collect unique rings; restDist is the unscaled base radius, so
+            // multiply by containerScale to match the physics spring targets.
             const rings = Array.from(
               new Map(nonHostNodes.map(n => [n.ringIndex, n.restDist])).entries()
             ).sort(([a], [b]) => a - b);
-            // Ring 0 = innermost (Organizers/Speakers) gets a purple tint,
-            // ring 1 gets blue, ring 2+ gets teal — matching the role colours.
             const ringColors = [
               'rgba(139,92,246,0.13)',  // ring 0 — organizer purple
               'rgba(59,130,246,0.10)',  // ring 1 — speaker blue
@@ -493,7 +509,7 @@ function MeshGraphInner({
               <circle
                 key={`ring-guide-${ringIndex}`}
                 cx="0" cy="0"
-                r={restDist}
+                r={restDist * containerScale}
                 fill="none"
                 stroke={ringColors[ringIndex] ?? ringColors[2]}
                 strokeWidth="1.5"
