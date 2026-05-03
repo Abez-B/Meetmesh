@@ -4,12 +4,10 @@ interface LogoProps {
 }
 
 export function Logo({ size = 28, className }: LogoProps) {
-  const s = size;
-  const cx = s / 2;
   return (
     <svg
-      width={s}
-      height={s}
+      width={size}
+      height={size}
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
