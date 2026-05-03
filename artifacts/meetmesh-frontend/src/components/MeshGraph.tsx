@@ -21,6 +21,12 @@ interface GraphNode {
   visited: boolean;
   role: ParticipantRole;
   photo?: string;
+  /** Ring tier (0 = innermost). Set once on node creation. */
+  ringIndex: number;
+  /** Target distance from host in graph px — derived from ring tier. */
+  restDist: number;
+  /** How many nodes share this ring — drives angular spacing force. */
+  ringCount: number;
 }
 
 type ParticipantRole = 'Host' | 'Organizer' | 'Speaker' | 'Attendee';
@@ -36,16 +42,23 @@ const ROLE_PRIORITY: Record<ParticipantRole, number> = {
 };
 
 // ── Physics constants ─────────────────────────────────────────────────────────
-const BASE_DIST    = 120;   // minimum rest distance from host (px)
-const DIST_SCALE   = 16;    // px added per sqrt(node) — gives logarithmic growth
-const MAX_DIST     = 320;   // hard cap (px)
-const SPRING_STEP  = 0.055; // fraction of spring error corrected per frame (no overshoot)
-const MIN_DIST     = 56;    // minimum centre-to-centre distance between nodes (px)
-const CLUSTER_REST = 76;    // rest distance within visited cluster (px)
+// Ring layout — nodes are assigned to concentric rings by role, 6 per ring max.
+// Organizers/Speakers fill inner rings; Attendees go to outer rings.
+const RING_CAPACITY = 6;     // max non-host nodes per ring
+const RING_BASE     = 155;   // inner-ring radius (px) — ring 0
+const RING_GAP      = 90;    // extra px added per ring level
+
+const SPRING_STEP  = 0.055; // fraction of radial spring error corrected per frame
+const MIN_DIST     = 52;    // absolute minimum centre-to-centre clearance (px)
+const CLUSTER_REST = 76;    // visited-cluster pull rest distance (px)
 const CLUSTER_STEP = 0.04;  // fraction of cluster error corrected per frame
-const CURSOR_DIST  = 95;    // px — cursor repulsion bubble radius (graph coords)
-const CURSOR_STR   = 0.52;  // push strength per px of cursor overlap
-const DRIFT_AMP    = 0.07;  // px/frame — per-node sinusoidal breathing (~1.3px peak)
+
+// Cursor repulsion — subtle nudge, NOT a flee response.
+// CURSOR_DEAD creates a safe zone so hovering/clicking still works.
+const CURSOR_DIST  = 75;    // px — repulsion bubble radius (graph coords)
+const CURSOR_DEAD  = 40;    // px — inner dead zone: no push when cursor THIS close
+const CURSOR_STR   = 0.038; // push strength (calibrated so max displacement ≈ 25 px)
+const DRIFT_AMP    = 0.06;  // px/frame — per-node sinusoidal breathing (~1 px peak)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ZOOM_MIN = 0.3;
@@ -145,25 +158,31 @@ function MeshGraphInner({
       let dx = 0;
       let dy = 0;
 
-      // 1. Spring toward dynamically computed REST_DIST (scales with crowd size)
-      const restDist = Math.min(MAX_DIST, BASE_DIST + Math.sqrt(nonHost.length) * DIST_SCALE);
+      // 1. Radial spring — pull/push toward this node's ring radius
+      const { restDist, ringIndex, ringCount } = node;
       const dist = Math.sqrt(node.x * node.x + node.y * node.y) || 0.01;
       const springErr = dist - restDist;
-      // Move a small fraction of the error — no overshoot possible
       const sc = springErr * SPRING_STEP;
       dx -= sc * (node.x / dist);
       dy -= sc * (node.y / dist);
 
-      // 2. Repulsion: hard push-apart if closer than MIN_DIST
+      // 2. Node-to-node repulsion — same-ring nodes push to ideal angular spacing;
+      //    cross-ring nodes use absolute minimum clearance.
       for (let j = 0; j < nonHost.length; j++) {
         if (i === j) continue;
-        const o    = nonHost[j];
-        const rdx  = node.x - o.x;
-        const rdy  = node.y - o.y;
-        const rd   = Math.sqrt(rdx * rdx + rdy * rdy) || 0.01;
-        if (rd < MIN_DIST) {
-          // Split the correction between the two nodes (each moves half)
-          const push = (MIN_DIST - rd) * 0.5;
+        const o   = nonHost[j];
+        const rdx = node.x - o.x;
+        const rdy = node.y - o.y;
+        const rd  = Math.sqrt(rdx * rdx + rdy * rdy) || 0.01;
+        // Ideal chord distance for even angular spacing within a ring:
+        //   chord = 2r × sin(π / n)   →  use 85 % to allow organic bunching
+        const sameRing       = o.ringIndex === ringIndex;
+        const ringSpacing    = sameRing && ringCount > 1
+          ? 2 * restDist * Math.sin(Math.PI / ringCount) * 0.85
+          : 0;
+        const effectiveMin   = Math.max(MIN_DIST, ringSpacing);
+        if (rd < effectiveMin) {
+          const push = (effectiveMin - rd) * 0.5;
           dx += push * (rdx / rd);
           dy += push * (rdy / rd);
         }
@@ -185,21 +204,21 @@ function MeshGraphInner({
         }
       }
 
-      // 4. Cursor repulsion — nodes spring away from the mouse pointer
+      // 4. Cursor repulsion — gentle nudge only outside the dead zone.
+      //    Inside CURSOR_DEAD the node is left alone so it can be hovered/clicked.
       const mouse = mouseRef.current;
       if (mouse) {
         const mdx = node.x - mouse.x;
         const mdy = node.y - mouse.y;
         const md  = Math.sqrt(mdx * mdx + mdy * mdy) || 0.01;
-        if (md < CURSOR_DIST) {
+        if (md > CURSOR_DEAD && md < CURSOR_DIST) {
           const push = (CURSOR_DIST - md) * CURSOR_STR;
           dx += push * (mdx / md);
           dy += push * (mdy / md);
         }
       }
 
-      // 5. Subtle alive drift — unique Lissajous phase per node index
-      //    Keeps the graph gently breathing even at rest (~1.3 px peak-to-peak)
+      // 5. Subtle alive drift — unique Lissajous phase per node keeps it breathing
       const t = Date.now() * 0.00018;
       dx += Math.sin(t * 0.75 + i * 1.7321) * DRIFT_AMP;
       dy += Math.cos(t * 0.60 + i * 2.8912) * DRIFT_AMP;
@@ -243,19 +262,31 @@ function MeshGraphInner({
       });
     }
 
+    // Pre-compute ring membership so each node knows its restDist and ringCount.
+    // Nodes are already sorted by role priority (Organizer → Speaker → Attendee),
+    // so high-value roles naturally land on the inner ring.
+    const ringData = nonHost.map((_, i) => {
+      const ringIndex  = Math.floor(i / RING_CAPACITY);
+      const ringStart  = ringIndex * RING_CAPACITY;
+      const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHost.length);
+      const ringCount  = ringEnd - ringStart;
+      const restDist   = RING_BASE + ringIndex * RING_GAP;
+      return { ringIndex, ringCount, restDist };
+    });
+
     nonHost.forEach((p, i) => {
       const prev  = prevById.get(p.peerId);
-      // New nodes start near the center so the spring force visibly flings them
-      // outward to their equilibrium ring — giving a satisfying burst-in animation.
-      const spawnJitter = i % 2 === 0 ? 1 : -1; // tiny offset so repulsion has direction
+      // New nodes start near the center so the spring flings them out to their ring.
+      const spawnJitter = i % 2 === 0 ? 1 : -1;
       nodes.push({
-        id:      p.peerId,
+        id:       p.peerId,
         p,
-        x:       prev?.x ?? spawnJitter * 4,
-        y:       prev?.y ?? (i % 3 === 0 ? 4 : -4),
-        visited: visitedNodes.has(p.peerId),
-        role:    p.role as Exclude<ParticipantRole, 'Host'>,
-        photo:   parseProfile(p.json)?.photo,
+        x:        prev?.x ?? spawnJitter * 4,
+        y:        prev?.y ?? (i % 3 === 0 ? 4 : -4),
+        visited:  visitedNodes.has(p.peerId),
+        role:     p.role as Exclude<ParticipantRole, 'Host'>,
+        photo:    parseProfile(p.json)?.photo,
+        ...ringData[i],
       });
     });
 
