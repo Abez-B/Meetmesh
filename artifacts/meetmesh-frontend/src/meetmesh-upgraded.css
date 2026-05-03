@@ -1299,3 +1299,83 @@ button.btn-31[class*="primary"],
   50%       { opacity: 0.9; }
 }
 .wr-lobby-card { position: relative; z-index: 1; }
+
+/* ── Reaction bar ──────────────────────────────────────────────────────────── */
+.reaction-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(12, 12, 18, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 40px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+.reaction-btn {
+  font-size: 22px;
+  line-height: 1;
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.reaction-btn:hover {
+  transform: scale(1.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+.reaction-btn:active,
+.reaction-btn-fired {
+  transform: scale(0.88) !important;
+}
+@keyframes btn-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.reaction-btn-fired {
+  animation: btn-pop 0.5s ease forwards;
+}
+
+/* ── Floating reaction toasts ────────────────────────────────────────────── */
+.reaction-floats {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 299;
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.reaction-float {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.reaction-float-emoji {
+  font-size: 36px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+}
+.reaction-float-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.03em;
+  background: rgba(0,0,0,0.5);
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+}

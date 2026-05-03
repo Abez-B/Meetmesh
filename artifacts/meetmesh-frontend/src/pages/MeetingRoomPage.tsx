@@ -10,6 +10,8 @@ import { MeetingRoomSkeleton } from '../components/SkeletonPage';
 import { ParticipantGrid } from '../components/ParticipantGrid';
 import { Logo } from '../components/Logo';
 import { ChatPanel } from '../components/ChatPanel';
+import { ReactionBar, ReactionFloats } from '../components/ReactionLayer';
+import { parseProfile } from 'meetmesh-core';
 import '../meetmesh-upgraded.css';
 import '../chat.css';
 
@@ -52,11 +54,7 @@ export default function MeetingRoomPage() {
 
   const selfParticipant = state.selfPeerId ? state.room.participants[state.selfPeerId] : null;
   const selfName = selfParticipant?.displayName ?? 'You';
-  let selfAvatar: string | undefined;
-  try {
-    const p = JSON.parse(selfParticipant?.json ?? '{}');
-    selfAvatar = p.photo as string | undefined;
-  } catch { }
+  const selfAvatar = selfParticipant ? parseProfile(selfParticipant.json)?.photo : undefined;
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const participantsList = useMemo(
@@ -171,6 +169,15 @@ export default function MeetingRoomPage() {
           )}
         </AnimatePresence>
       </div>
+
+      <ReactionFloats />
+
+      <ReactionBar
+        selfPeerId={state.selfPeerId}
+        selfName={selfName}
+        selfAvatar={selfAvatar}
+        participants={participantsList}
+      />
 
       <AnimatePresence>
         {selectedParticipant && (

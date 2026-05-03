@@ -87,30 +87,62 @@ export class MockMeshClient {
     let profile: Record<string, unknown> = {};
     try { profile = JSON.parse(profileJson); } catch { }
 
+    // If the joiner is the host (reconnecting to /manage), make them the room host.
+    const isHost = typeof sessionStorage !== 'undefined'
+      && sessionStorage.getItem('meetmesh_is_host') === 'true';
+    const hostPeerId = isHost ? peerId : 'sarah-chen';
+
+    // Build participants: start from mock map, then override host role & add self.
+    const participants: Record<string, typeof MOCK_PARTICIPANTS_MAP[string]> = {
+      ...MOCK_PARTICIPANTS_MAP,
+    };
+
+    if (isHost) {
+      // Joining user is the host — give them the host node at the center.
+      participants[peerId] = {
+        peerId,
+        displayName,
+        role: 'Host' as const,
+        isAdmitted: true,
+        joinedAt: now,
+        json: JSON.stringify({
+          ...profile,
+          photo: profile.photo ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${peerId}`,
+        }),
+      };
+    } else {
+      // Non-host join: elevate sarah-chen to Host so the graph has a center node.
+      const sarah = MOCK_PARTICIPANTS_MAP['sarah-chen'];
+      if (sarah) participants['sarah-chen'] = { ...sarah, role: 'Host' as const };
+      // Add the joining attendee.
+      participants[peerId] = {
+        peerId,
+        displayName,
+        role: 'Attendee' as const,
+        isAdmitted: true,
+        joinedAt: now,
+        json: JSON.stringify({
+          ...profile,
+          photo: profile.photo ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${peerId}`,
+        }),
+      };
+    }
+
     const room: MeetingRoom = {
       meetingCode,
       eventName: 'Demo Event — MeetMesh',
-      hostPeerId: 'sarah-chen',
+      hostPeerId,
       startedAt: now,
-      waitingRoomEnabled: false,
-      participants: {
-        ...MOCK_PARTICIPANTS_MAP,
-        [peerId]: {
-          peerId,
-          displayName,
-          role: 'Attendee',
-          isAdmitted: true,
-          joinedAt: now,
-          json: JSON.stringify({
-            ...profile,
-            photo: profile.photo ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${peerId}`,
-          }),
-        },
-      },
+      waitingRoomEnabled: isHost,
+      participants,
     };
 
     chatStore.seed(INITIAL_CHAT_MESSAGES);
     this._patch({ phase: 'active', room });
+
+    if (isHost) {
+      setTimeout(() => { this._patch({ waitingRoom: MOCK_WAITING_PEERS }); }, 2500);
+    }
   }
 
   async admitParticipant(_meetingCode: string, peerId: string): Promise<void> {

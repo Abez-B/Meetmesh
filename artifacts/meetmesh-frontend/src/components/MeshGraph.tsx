@@ -264,6 +264,7 @@ function MeshGraphInner({
         visited: visitedNodes.has(host.peerId),
         role: 'Host',
         photo: parseProfile(host.json)?.photo,
+        ringIndex: 0, restDist: 0, ringCount: 0, // unused for host (always pinned at origin)
       });
     }
 
