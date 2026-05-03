@@ -10,6 +10,7 @@ import { BackgroundPattern } from '../components/BackgroundPattern';
 import { commitPendingEventMeta, savePendingEventMeta } from '../utils/hostEventMeta';
 import { v4 as uuid } from 'uuid';
 import { SpaceBackground } from '../components/SpaceBackground';
+import { Logo } from '../components/Logo';
 import './MeshVisual.css';
 import '../meetmesh-upgraded.css';
 
@@ -142,7 +143,7 @@ export default function LandingPage() {
       <div className="mm-root">
         <nav className="mm-nav">
           <div className="mm-nav-logo">
-            <div className="mm-nav-logo-mark">MM</div>
+            <Logo size={28} />
             <span className="mm-nav-wordmark">MeetMesh</span>
           </div>
           <div className="mm-nav-status">

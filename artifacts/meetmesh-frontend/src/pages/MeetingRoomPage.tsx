@@ -8,7 +8,10 @@ import { MeshGraph } from '../components/MeshGraph';
 import { NodeInfoCard } from '../components/NodeInfoCard';
 import { MeetingRoomSkeleton } from '../components/SkeletonPage';
 import { ParticipantGrid } from '../components/ParticipantGrid';
+import { Logo } from '../components/Logo';
+import { ChatPanel } from '../components/ChatPanel';
 import '../meetmesh-upgraded.css';
+import '../chat.css';
 
 export default function MeetingRoomPage() {
   const client = useMeshClient();
@@ -20,6 +23,7 @@ export default function MeetingRoomPage() {
   const [selectedNodePos, setSelectedNodePos] = useState<{ x: number, y: number } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showSidebar, setSidebarOpen] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (state.phase === 'ended') { navigate('/'); return; }
@@ -45,6 +49,14 @@ export default function MeetingRoomPage() {
   const count = Object.keys(state.room.participants).length;
   const code = state.room.meetingCode;
 
+  const selfParticipant = state.selfPeerId ? state.room.participants[state.selfPeerId] : null;
+  const selfName = selfParticipant?.displayName ?? 'You';
+  let selfAvatar: string | undefined;
+  try {
+    const p = JSON.parse(selfParticipant?.json ?? '{}');
+    selfAvatar = p.photo as string | undefined;
+  } catch { }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const participantsList = useMemo(
     () => Object.values(state.room!.participants),
@@ -57,6 +69,7 @@ export default function MeetingRoomPage() {
     <div className="mr-root">
       <div className="mr-topbar">
         <div className="mr-topbar-left">
+          <Logo size={22} />
           <span className="mr-event-name">{state.room.eventName}</span>
           <div className="mr-meta">
             <div className="mr-meta-item">
@@ -68,6 +81,12 @@ export default function MeetingRoomPage() {
           </div>
         </div>
         <div className="mr-topbar-actions">
+          <button
+            className={`mr-btn-secondary${showChat ? ' mr-btn-active' : ''}`}
+            onClick={() => setShowChat(!showChat)}
+          >
+            💬 Chat
+          </button>
           <button
             className="mr-btn-secondary"
             onClick={() => setSidebarOpen(!showSidebar)}
@@ -92,7 +111,7 @@ export default function MeetingRoomPage() {
       </div>
 
       <div className="mr-content">
-        <div className="mr-stage" style={{ marginRight: showSidebar ? 300 : 0 }}>
+        <div className="mr-stage" style={{ marginRight: (showSidebar ? 300 : 0) + (showChat ? 320 : 0) }}>
           <MeshGraph
             participants={participantsList}
             visitedNodes={visitedNodes}
@@ -103,6 +122,17 @@ export default function MeetingRoomPage() {
             }}
           />
         </div>
+
+        <AnimatePresence>
+          {showChat && (
+            <ChatPanel
+              selfPeerId={state.selfPeerId}
+              selfName={selfName}
+              selfAvatar={selfAvatar}
+              onClose={() => setShowChat(false)}
+            />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {showSidebar && (

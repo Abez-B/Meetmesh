@@ -14,6 +14,7 @@ import { HostPanelSkeleton } from '../components/SkeletonPage';
 import { RockerSwitch } from '../components/RockerSwitch';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import type { MeetingRoom } from 'meetmesh-core';
+import { Logo } from '../components/Logo';
 import { v4 as uuid } from 'uuid';
 import '../meetmesh-upgraded.css';
 
@@ -35,7 +36,7 @@ const HostTopbar = memo(function HostTopbar({
     <div className="hp-topbar">
       <div className="hp-topbar-left">
         <div className="hp-brand">
-          <div className="hp-mark">MM</div>
+          <Logo size={24} />
           <span className="hp-title">
             Host Dashboard
             <span className="hp-title-sep"> · </span>

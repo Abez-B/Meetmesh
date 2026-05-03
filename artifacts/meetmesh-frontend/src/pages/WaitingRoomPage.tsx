@@ -6,6 +6,7 @@ import { useMeshClient }   from '../hooks/useMeshClient';
 import { WaitingList }     from '../components/WaitingList';
 import { MeetingCodeCard } from '../components/MeetingCodeCard';
 import { ConnectionDot }   from '../components/ConnectionDot';
+import { Logo }            from '../components/Logo';
 import '../meetmesh-upgraded.css';
 
 export default function WaitingRoomPage() {
@@ -37,7 +38,7 @@ export default function WaitingRoomPage() {
       <div className="wr-root">
         <nav className="wr-nav">
           <div className="wr-nav-brand">
-            <div className="wr-nav-mark">MM</div>
+            <Logo size={24} />
             <span className="wr-nav-name">MeetMesh</span>
           </div>
           <div className="wr-nav-dot-wrap">
@@ -83,7 +84,7 @@ export default function WaitingRoomPage() {
     <div className="wr-root">
       <nav className="wr-nav">
         <div className="wr-nav-brand">
-          <div className="wr-nav-mark">MM</div>
+          <Logo size={24} />
           <span className="wr-nav-name">MeetMesh</span>
         </div>
         <div className="wr-nav-dot-wrap">

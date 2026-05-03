@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "RADoph85vZqg6ussMbVcs"
+uri = "file://artifacts/meetmesh-frontend/public/logo.png"
+type = "image"
+title = "meetmesh logo mesh network"
