@@ -9,35 +9,14 @@ import { CameraCapture } from '../components/CameraCapture';
 import { BackgroundPattern } from '../components/BackgroundPattern';
 import { commitPendingEventMeta, savePendingEventMeta } from '../utils/hostEventMeta';
 import { v4 as uuid } from 'uuid';
-import { SpaceBackground } from '../components/SpaceBackground';
 import { Logo } from '../components/Logo';
+import { SpringMeshPreview } from '../components/SpringMeshPreview';
 import './MeshVisual.css';
 import '../meetmesh-upgraded.css';
 
 const fade = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease: 'easeOut' as const } };
 const LINKEDIN_REGEX = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)\/?/i;
 
-const STARS = Array.from({ length: 40 }, (_, i) => ({
-  id: i,
-  x: (i * 37.3) % 100,
-  y: (i * 61.7) % 100,
-  size: (i % 3) * 0.5 + 0.5,
-  opacity: (i % 5) * 0.07 + 0.05,
-}));
-
-const INNER_NODES = [
-  { angle: '0deg', label: 'S', cls: '', dur: '42s' },
-  { angle: '120deg', label: 'O', cls: 'organizer', dur: '42s' },
-  { angle: '240deg', label: 'S', cls: '', dur: '42s' },
-];
-
-const OUTER_NODES = [
-  { angle: '0deg',   label: 'A', dur: '60s' },
-  { angle: '72deg',  label: 'A', dur: '60s' },
-  { angle: '144deg', label: 'A', dur: '60s' },
-  { angle: '216deg', label: 'A', dur: '60s' },
-  { angle: '288deg', label: 'A', dur: '60s' },
-];
 
 export default function LandingPage() {
   const client = useMeshClient();
@@ -202,39 +181,8 @@ export default function LandingPage() {
                   </span>
                 </div>
 
-                <div className="mm-solar">
-                  <SpaceBackground />
-                  {STARS.map(s => (
-                    <div
-                      key={s.id}
-                      className="mm-star"
-                      style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.size, height: s.size, opacity: s.opacity }}
-                    />
-                  ))}
-
-                  <div className="mm-orbit mm-orbit-inner" />
-                  <div className="mm-orbit mm-orbit-outer" />
-                  <div className="mm-sun">H</div>
-
-                  {INNER_NODES.map((n, i) => (
-                    <div
-                      key={i}
-                      className={`mm-node mm-node-inner${n.cls ? ' ' + n.cls : ''}`}
-                      style={{ '--angle': n.angle, '--r': '75px', '--dur': n.dur, '--delay': `${i * -14}s` } as React.CSSProperties}
-                    >
-                      {n.label}
-                    </div>
-                  ))}
-
-                  {OUTER_NODES.map((n, i) => (
-                    <div
-                      key={i}
-                      className="mm-node mm-node-outer"
-                      style={{ '--angle': n.angle, '--r': '120px', '--dur': n.dur, '--delay': `${i * -12}s` } as React.CSSProperties}
-                    >
-                      {n.label}
-                    </div>
-                  ))}
+                <div className="mm-solar" style={{ position: 'relative' }}>
+                  <SpringMeshPreview />
                 </div>
 
                 <div className="mm-legend">

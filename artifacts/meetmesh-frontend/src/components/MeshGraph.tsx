@@ -36,7 +36,11 @@ const ROLE_PRIORITY: Record<ParticipantRole, number> = {
 };
 
 // ── Relaxation constants ──────────────────────────────────────────────────────
-const REST_DIST    = 160;   // natural distance from host (px)
+// REST_DIST is computed dynamically inside relaxStep based on node count,
+// so the graph spreads as the room fills.
+const BASE_DIST    = 120;   // minimum rest distance from host (px)
+const DIST_SCALE   = 16;    // px added per sqrt(node) — gives logarithmic growth
+const MAX_DIST     = 320;   // hard cap (px)
 const SPRING_STEP  = 0.055; // fraction of spring error corrected each frame (no overshoot)
 const MIN_DIST     = 56;    // minimum centre-to-centre distance between nodes (px)
 const CLUSTER_REST = 76;    // rest distance within visited cluster (px)
@@ -156,9 +160,10 @@ function MeshGraphInner({
       let dx = 0;
       let dy = 0;
 
-      // 1. Spring toward REST_DIST from host (origin)
+      // 1. Spring toward dynamically computed REST_DIST (scales with crowd size)
+      const restDist = Math.min(MAX_DIST, BASE_DIST + Math.sqrt(nonHost.length) * DIST_SCALE);
       const dist = Math.sqrt(node.x * node.x + node.y * node.y) || 0.01;
-      const springErr = dist - REST_DIST;
+      const springErr = dist - restDist;
       // Move a small fraction of the error — no overshoot possible
       const sc = springErr * SPRING_STEP;
       dx -= sc * (node.x / dist);
@@ -242,8 +247,8 @@ function MeshGraphInner({
       nodes.push({
         id:      p.peerId,
         p,
-        x:       prev?.x ?? Math.cos(angle) * (REST_DIST + jitter),
-        y:       prev?.y ?? Math.sin(angle) * (REST_DIST + jitter),
+        x:       prev?.x ?? Math.cos(angle) * (BASE_DIST + jitter),
+        y:       prev?.y ?? Math.sin(angle) * (BASE_DIST + jitter),
         visited: visitedNodes.has(p.peerId),
         role:    p.role as Exclude<ParticipantRole, 'Host'>,
         photo:   parseProfile(p.json)?.photo,
