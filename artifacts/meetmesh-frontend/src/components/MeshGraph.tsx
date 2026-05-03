@@ -105,6 +105,8 @@ function MeshGraphInner({ participants, visitedNodes, onNodeClick, searchTerm = 
   const transformRef = useRef({ x: 300, y: 300, k: 1 });
   const dimsRef = useRef({ width: 600, height: 600 });
   const panRef = useRef({ active: false, lastX: 0, lastY: 0 });
+  const hoverPauseStartRef = useRef<number | null>(null);
+  const catchupMsRef = useRef<Map<string, number>>(new Map());
 
   const [nodeCount, setNodeCount] = useState(0);
 
@@ -139,8 +141,22 @@ function MeshGraphInner({ participants, visitedNodes, onNodeClick, searchTerm = 
   }, []);
 
   const setHoveredNode = useCallback((nodeId: string | null) => {
+    const prev = hoveredNodeIdRef.current;
     hoveredNodeIdRef.current = nodeId;
+
+    if (nodeId === null && prev !== null) {
+      const pausedMs = hoverPauseStartRef.current !== null
+        ? performance.now() - hoverPauseStartRef.current
+        : 0;
+      if (pausedMs > 0) catchupMsRef.current.set(prev, pausedMs);
+      hoverPauseStartRef.current = null;
+    } else if (nodeId !== null) {
+      hoverPauseStartRef.current = performance.now();
+      catchupMsRef.current.delete(nodeId);
+    }
   }, []);
+
+  const CATCHUP_MULTIPLIER = 4;
 
   const positionNodesByDelta = useCallback((deltaMs: number) => {
     const pausedNodeId = hoveredNodeIdRef.current;
@@ -150,8 +166,23 @@ function MeshGraphInner({ participants, visitedNodes, onNodeClick, searchTerm = 
         node.y = 0;
         continue;
       }
-      if (node.id !== pausedNodeId) {
-        node.orbitAngle += deltaMs * node.orbitSpeed;
+      if (node.id === pausedNodeId) {
+        // Node is hovered — keep it frozen in place
+      } else {
+        const remaining = catchupMsRef.current.get(node.id) ?? 0;
+        if (remaining > 0) {
+          // Catch-up: run at CATCHUP_MULTIPLIER× speed until debt is repaid
+          const extraMs = Math.min(remaining, deltaMs * (CATCHUP_MULTIPLIER - 1));
+          node.orbitAngle += (deltaMs + extraMs) * node.orbitSpeed;
+          const newRemaining = remaining - extraMs;
+          if (newRemaining <= 0) {
+            catchupMsRef.current.delete(node.id);
+          } else {
+            catchupMsRef.current.set(node.id, newRemaining);
+          }
+        } else {
+          node.orbitAngle += deltaMs * node.orbitSpeed;
+        }
       }
       node.x = Math.cos(node.orbitAngle) * node.orbitRadius;
       node.y = Math.sin(node.orbitAngle) * node.orbitRadius;

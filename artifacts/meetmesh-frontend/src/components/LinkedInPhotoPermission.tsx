@@ -20,27 +20,29 @@ export function LinkedInPhotoPermission({ linkedInUsername, onPhotoFetched, onDi
     if (stored === 'denied') { onDismiss(); }
   }, [onDismiss]);
 
-  const handleAllow = async () => {
+  const handleAllow = () => {
     setPermState('loading');
     localStorage.setItem(PERM_KEY, 'granted');
 
     const url = `https://unavatar.io/linkedin/${linkedInUsername}`;
 
-    try {
-      const resp = await fetch(url, { method: 'HEAD' });
-      if (resp.ok) {
-        setPreviewUrl(url);
-        onPhotoFetched(url);
-        setPermState('done');
-      } else {
-        throw new Error('not ok');
-      }
-    } catch {
-      const fallback = `https://api.dicebear.com/7.x/thumbs/svg?seed=${linkedInUsername}`;
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      setPreviewUrl(url);
+      onPhotoFetched(url);
+      setPermState('done');
+    };
+
+    img.onerror = () => {
+      const fallback = `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(linkedInUsername)}`;
       setPreviewUrl(fallback);
       onPhotoFetched(fallback);
       setPermState('failed');
-    }
+    };
+
+    img.src = url;
   };
 
   const handleDeny = () => {
