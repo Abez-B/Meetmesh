@@ -1,0 +1,17 @@
+kind = "web"
+previewPath = "/meetmesh"
+title = "MeetMesh Frontend"
+version = "1.0.0"
+id = "meetmesh-frontend-001"
+
+[[services]]
+localPort = 5173
+name = "MeetMesh Frontend"
+paths = ["/meetmesh"]
+
+[services.env]
+PORT = "5173"
+BASE_PATH = "/meetmesh"
+
+[services.development]
+run = "pnpm --filter @workspace/meetmesh-frontend run dev"

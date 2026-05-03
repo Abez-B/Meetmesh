@@ -1,0 +1,454 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useMeshClient } from '../hooks/useMeshClient';
+import { normalizeMeetingCode, isValidMeetingCode } from 'meetmesh-core';
+import { ConnectionDot } from '../components/ConnectionDot';
+import { TooltipButton } from '../components/TooltipButton';
+import { CameraCapture } from '../components/CameraCapture';
+import { BackgroundPattern } from '../components/BackgroundPattern';
+import { commitPendingEventMeta, savePendingEventMeta } from '../utils/hostEventMeta';
+import { v4 as uuid } from 'uuid';
+import { SpaceBackground } from '../components/SpaceBackground';
+import './MeshVisual.css';
+import '../meetmesh-upgraded.css';
+
+const fade = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease: 'easeOut' as const } };
+const LINKEDIN_REGEX = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)\/?/i;
+
+const STARS = Array.from({ length: 40 }, (_, i) => ({
+  id: i,
+  x: (i * 37.3) % 100,
+  y: (i * 61.7) % 100,
+  size: (i % 3) * 0.5 + 0.5,
+  opacity: (i % 5) * 0.07 + 0.05,
+}));
+
+const INNER_NODES = [
+  { angle: '0deg', label: 'S', cls: '', dur: '42s' },
+  { angle: '120deg', label: 'O', cls: 'organizer', dur: '42s' },
+  { angle: '240deg', label: 'S', cls: '', dur: '42s' },
+];
+
+const OUTER_NODES = [
+  { angle: '0deg',   label: 'A', dur: '60s' },
+  { angle: '72deg',  label: 'A', dur: '60s' },
+  { angle: '144deg', label: 'A', dur: '60s' },
+  { angle: '216deg', label: 'A', dur: '60s' },
+  { angle: '288deg', label: 'A', dur: '60s' },
+];
+
+export default function LandingPage() {
+  const client = useMeshClient();
+  const navigate = useNavigate();
+  const { code } = useParams<{ code?: string }>();
+
+  const [tab, setTab] = useState<'create' | 'join'>(code ? 'join' : 'create');
+  const [eventName, setEventName] = useState('');
+  const [hostName, setHostName] = useState('');
+  const [hostLinkedIn, setHostLinkedIn] = useState('');
+  const [hostGithub, setHostGithub] = useState('');
+  const [eventSubtitle, setEventSubtitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [hostBio, setHostBio] = useState('');
+  const [hostPhoto, setHostPhoto] = useState<string | undefined>();
+  const [joinCode, setJoinCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('meetmesh_host_setup_cache');
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      if (parsed.hostName) setHostName(parsed.hostName);
+      if (parsed.hostLinkedIn) setHostLinkedIn(parsed.hostLinkedIn);
+      if (parsed.hostGithub) setHostGithub(parsed.hostGithub);
+      if (parsed.hostBio) setHostBio(parsed.hostBio);
+      if (parsed.eventSubtitle) setEventSubtitle(parsed.eventSubtitle);
+      if (parsed.eventDescription) setEventDescription(parsed.eventDescription);
+    } catch { }
+  }, []);
+
+  useEffect(() => {
+    client.connect().catch((err) => {
+      console.error('[LandingPage] Connection failed:', err);
+      setError(`Relay connection failed: ${err?.message || 'Is the API running at localhost:5000?'}\nCheck console for CORS errors.`);
+    });
+
+    const onCreated = (payload: { meetingCode: string }) => {
+      commitPendingEventMeta(payload.meetingCode);
+      navigate(`/manage/${payload.meetingCode}`);
+    };
+    const onError = ({ detail }: { detail: string }) => { setError(detail); setBusy(false); };
+
+    client.on('MeetingCreated', onCreated);
+    client.on('Error', onError);
+    return () => { client.off('MeetingCreated', onCreated); client.off('Error', onError); };
+  }, [client, navigate]);
+
+  const handleCreate = async () => {
+    if (!eventName.trim()) { setError('Enter an event name'); return; }
+    if (!hostName.trim()) { setError('Enter your name'); return; }
+    if (hostLinkedIn.trim() && !hostLinkedIn.trim().match(LINKEDIN_REGEX)) { setError('Use a valid LinkedIn URL for the host profile'); return; }
+
+    setBusy(true);
+    setError('');
+
+    const peerId = sessionStorage.getItem('meetmesh_peer_id') ?? localStorage.getItem('meetmesh_peer_id') ?? uuid();
+    const profileJson = JSON.stringify({
+      name: hostName.trim() || undefined,
+      linkedIn: hostLinkedIn.trim() || undefined,
+      github: hostGithub.trim() || undefined,
+      bio: hostBio.trim() || undefined,
+      photo: hostPhoto,
+    });
+
+    localStorage.setItem('meetmesh_host_setup_cache', JSON.stringify({
+      hostName: hostName.trim(),
+      hostLinkedIn: hostLinkedIn.trim(),
+      hostGithub: hostGithub.trim(),
+      hostBio: hostBio.trim(),
+      eventSubtitle: eventSubtitle.trim(),
+      eventDescription: eventDescription.trim(),
+      hostPhoto,
+    }));
+
+    savePendingEventMeta({ subtitle: eventSubtitle.trim() || undefined, description: eventDescription.trim() || undefined });
+
+    sessionStorage.setItem('meetmesh_peer_id', peerId);
+    localStorage.setItem('meetmesh_peer_id', peerId);
+    sessionStorage.setItem('meetmesh_is_host', 'true');
+    sessionStorage.setItem('meetmesh_last_name', hostName.trim());
+    sessionStorage.setItem('meetmesh_last_profile_json', profileJson);
+
+    try {
+      await client.createMeeting(eventName.trim(), peerId, profileJson);
+    } catch {
+      setError('Failed to create meeting — is the server running?');
+      setBusy(false);
+    }
+  };
+
+  const handleJoin = () => {
+    const normalized = normalizeMeetingCode(joinCode);
+    if (!isValidMeetingCode(normalized)) { setError('Invalid meeting code (4 characters, letters and digits)'); return; }
+    navigate(`/join/${normalized}`);
+  };
+
+  return (
+    <>
+      <BackgroundPattern />
+      <div className="mm-root">
+        <nav className="mm-nav">
+          <div className="mm-nav-logo">
+            <div className="mm-nav-logo-mark">MM</div>
+            <span className="mm-nav-wordmark">MeetMesh</span>
+          </div>
+          <div className="mm-nav-status">
+            <ConnectionDot />
+            <span>Relay online</span>
+          </div>
+        </nav>
+
+        <div className="mm-page">
+          <div className="mm-hero">
+
+            <motion.section className="mm-copy" {...fade}>
+              <div className="mm-eyebrow">
+                <div className="mm-eyebrow-dot" />
+                Live Professional Proximity
+              </div>
+
+              <h1 className="mm-title">
+                Turn every attendee into a <em>live node.</em>
+              </h1>
+
+              <p className="mm-subtitle">
+                MeetMesh turns networking into a real-time spatial mesh. Hosts launch a session, attendees join instantly, and the room becomes an animated graph of people and roles.
+              </p>
+
+              <div className="mm-meta-row">
+                <ConnectionDot />
+                <span className="mm-status-pill">Websocket mesh active</span>
+              </div>
+
+              <div className="mm-proof-grid">
+                {([
+                  ['3D', 'live mesh presence'],
+                  ['QR', 'frictionless entry'],
+                  ['RT', 'role-aware updates'],
+                ] as const).map(([val, lbl]) => (
+                  <div className="mm-proof-card" key={val}>
+                    <span className="mm-proof-val">{val}</span>
+                    <span className="mm-proof-lbl">{lbl}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mm-hint">
+                Built for founder dinners, campus events, accelerator cohorts, and sponsor-heavy conferences.
+              </p>
+            </motion.section>
+
+            <div className="mm-visual">
+              <div className="mm-visual-card">
+                <div className="mm-visual-header">
+                  <span>Session mesh preview</span>
+                  <span className="mm-visual-badge">
+                    <span className="mm-visual-live-dot" />
+                    Live demo
+                  </span>
+                </div>
+
+                <div className="mm-solar">
+                  <SpaceBackground />
+                  {STARS.map(s => (
+                    <div
+                      key={s.id}
+                      className="mm-star"
+                      style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.size, height: s.size, opacity: s.opacity }}
+                    />
+                  ))}
+
+                  <div className="mm-orbit mm-orbit-inner" />
+                  <div className="mm-orbit mm-orbit-outer" />
+                  <div className="mm-sun">H</div>
+
+                  {INNER_NODES.map((n, i) => (
+                    <div
+                      key={i}
+                      className={`mm-node mm-node-inner${n.cls ? ' ' + n.cls : ''}`}
+                      style={{ '--angle': n.angle, '--r': '75px', '--dur': n.dur, '--delay': `${i * -14}s` } as React.CSSProperties}
+                    >
+                      {n.label}
+                    </div>
+                  ))}
+
+                  {OUTER_NODES.map((n, i) => (
+                    <div
+                      key={i}
+                      className="mm-node mm-node-outer"
+                      style={{ '--angle': n.angle, '--r': '120px', '--dur': n.dur, '--delay': `${i * -12}s` } as React.CSSProperties}
+                    >
+                      {n.label}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mm-legend">
+                  <span className="mm-legend-item">
+                    <i className="mm-legend-dot" style={{ background: '#FFD700', boxShadow: '0 0 6px rgba(255,215,0,0.5)' }} />
+                    Host
+                  </span>
+                  <span className="mm-legend-item">
+                    <i className="mm-legend-dot" style={{ background: '#3B82F6' }} />
+                    Speaker
+                  </span>
+                  <span className="mm-legend-item">
+                    <i className="mm-legend-dot" style={{ background: '#8B5CF6' }} />
+                    Organizer
+                  </span>
+                  <span className="mm-legend-item">
+                    <i className="mm-legend-dot" style={{ background: '#14B8A6' }} />
+                    Attendee
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mm-panel">
+              <div className="mm-panel-card">
+                <div className="mm-panel-top">
+                  <div>
+                    <p className="mm-panel-title">Start a room</p>
+                    <p className="mm-panel-desc">Create a host session or jump in with a meeting code.</p>
+                  </div>
+                  <span className="mm-instant-badge">Instant setup</span>
+                </div>
+
+                <div className="mm-tabs">
+                  {(['create', 'join'] as const).map(t => (
+                    <button
+                      key={t}
+                      className={`mm-tab${tab === t ? ' active' : ''}`}
+                      onClick={() => setTab(t)}
+                    >
+                      {t === 'create' ? 'Create' : 'Join'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mm-tab-body">
+                  <AnimatePresence mode="wait">
+                    {tab === 'create' ? (
+                      <motion.div
+                        key="create"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <div className="mm-field">
+                          <label className="mm-label">Event name</label>
+                          <input
+                            className="mm-input-upgraded"
+                            placeholder="e.g. Y Combinator Demo Day"
+                            value={eventName}
+                            onChange={e => { setEventName(e.target.value); setError(''); }}
+                            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                          />
+                        </div>
+
+                        <div className="mm-field">
+                          <label className="mm-label">Your name</label>
+                          <input
+                            className="mm-input-upgraded"
+                            placeholder="e.g. Alice"
+                            value={hostName}
+                            onChange={e => { setHostName(e.target.value); setError(''); }}
+                            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                          />
+                        </div>
+
+                        <div className="mm-field">
+                          <label className="mm-label">Host photo (optional)</label>
+                          {hostPhoto ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }}>
+                                <img src={hostPhoto} alt="Host" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </div>
+                              <TooltipButton text="Retake" onClick={() => setHostPhoto(undefined)} variant="default" />
+                            </div>
+                          ) : (
+                            <CameraCapture onCapture={setHostPhoto} onSkip={() => {}} />
+                          )}
+                        </div>
+
+                        <div className="mm-field">
+                          <label className="mm-label">Host LinkedIn</label>
+                          <input
+                            className="mm-input-upgraded"
+                            placeholder="linkedin.com/in/alice-example"
+                            value={hostLinkedIn}
+                            onChange={e => { setHostLinkedIn(e.target.value); setError(''); }}
+                          />
+                        </div>
+
+                        <div className="mm-field-row">
+                          <div className="mm-field" style={{ marginBottom: 0 }}>
+                            <label className="mm-label">Event subtitle</label>
+                            <input
+                              className="mm-input-upgraded"
+                              placeholder="Short headline"
+                              value={eventSubtitle}
+                              onChange={e => setEventSubtitle(e.target.value)}
+                            />
+                          </div>
+                          <div className="mm-field" style={{ marginBottom: 0 }}>
+                            <label className="mm-label">GitHub / Website</label>
+                            <input
+                              className="mm-input-upgraded"
+                              placeholder="github.com/alice"
+                              value={hostGithub}
+                              onChange={e => setHostGithub(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mm-field" style={{ marginTop: 14 }}>
+                          <label className="mm-label">Host event note</label>
+                          <textarea
+                            className="mm-textarea-upgraded"
+                            placeholder="What is this room about? Stored locally for host and presentation views."
+                            value={eventDescription}
+                            onChange={e => setEventDescription(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="mm-field">
+                          <label className="mm-label">Host bio</label>
+                          <textarea
+                            className="mm-textarea-upgraded"
+                            placeholder="A short intro for your mesh profile"
+                            value={hostBio}
+                            onChange={e => setHostBio(e.target.value)}
+                            style={{ minHeight: 70 }}
+                          />
+                        </div>
+
+                        <TooltipButton
+                          id="create-meeting-btn"
+                          text={busy ? 'Creating...' : 'Launch Session'}
+                          tooltip="Start Event"
+                          variant="primary"
+                          onClick={handleCreate}
+                          disabled={!eventName || !hostName || busy}
+                          style={{ width: '100%', marginTop: 18, minHeight: 50 } as React.CSSProperties}
+                        />
+
+                        <p className="mm-form-note">
+                          Host identity is created with the room. Event subtitle and note are stored locally for the host dashboard and presentation view.
+                        </p>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="join"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <div className="mm-field">
+                          <label className="mm-label">Meeting code</label>
+                          <input
+                            className="mm-input-upgraded mm-input-code"
+                            placeholder="A3B7"
+                            value={joinCode}
+                            onChange={e => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
+                            maxLength={4}
+                            onKeyDown={e => e.key === 'Enter' && handleJoin()}
+                          />
+                        </div>
+
+                        <TooltipButton
+                          text={busy ? 'Joining...' : 'Enter Room'}
+                          tooltip="Connect"
+                          variant="primary"
+                          onClick={handleJoin}
+                          disabled={!joinCode || joinCode.length < 4 || busy}
+                          style={{ width: '100%', marginTop: 18, minHeight: 50 } as React.CSSProperties}
+                        />
+
+                        <p className="mm-form-note">
+                          Join flow captures your profile details and drops you straight into the mesh.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {error && (
+                    <motion.div
+                      className="mm-error"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                </div>
+
+                <div className="mm-bottom-strip">
+                  <span className="mm-strip-tag">SignalR transport</span>
+                  <span className="mm-strip-tag">D3 simulation</span>
+                  <span className="mm-strip-tag">Role-aware mesh</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,250 @@
+/* ═══════════════════════════════════════
+SOLAR SYSTEM MESH VISUALIZATION
+══════════════════════════════════════════ */
+
+.mesh-container {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* Isolate repaints from the rest of the page */
+  contain: layout style;
+}
+
+/* SpaceBackground component wrapper */
+.mesh-container > .space-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure solar system elements are above the starfield */
+.mesh-container .orbit-ring {
+  position: absolute;
+  z-index: 5;
+}
+
+.mesh-container .orbital-node {
+  position: absolute;
+  z-index: 10;
+}
+
+.mesh-container .sun {
+  position: absolute;
+  z-index: 100; /* Sun always on top */
+}
+
+/* Central Sun (Host) */
+.sun {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) translateZ(0);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #FFD700 0%, #FFA500 100%);
+  box-shadow: 0 0 20px #FFD700, 0 0 40px rgba(255, 165, 0, 0.6);
+  animation: sunGlow 3s ease-in-out infinite;
+  will-change: box-shadow;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #000;
+}
+
+/* Orbit Rings */
+.orbit-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.orbit-inner {
+  width: 160px;
+  height: 160px;
+}
+
+.orbit-outer {
+  width: 240px;
+  height: 240px;
+}
+
+/* Orbital Nodes */
+.orbital-node {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  cursor: pointer;
+  z-index: 10;
+  margin-left: -16px; /* Half of width to center */
+  margin-top: -16px; /* Half of height to center */
+  transform: rotate(var(--start-angle, 0deg)) translateX(var(--orbit-radius, 80px)) rotate(calc(-1 * var(--start-angle, 0deg)));
+}
+
+.orbital-node:hover {
+  z-index: 20;
+}
+
+/* Inner orbit (Organizers/Speakers) */
+.orbit-inner.orbital-node {
+  --orbit-radius: 80px;
+  --duration: 45s;
+  background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+  animation: orbit var(--duration) linear infinite;
+  will-change: transform;
+}
+
+.orbit-inner.orbital-node:hover {
+  animation-play-state: paused;
+}
+
+/* Outer orbit (Attendees) */
+.orbit-outer.orbital-node {
+  --orbit-radius: 120px;
+  --duration: 60s;
+  background: linear-gradient(135deg, #14B8A6, #0D9488);
+  animation: orbit var(--duration) linear infinite;
+  will-change: transform;
+}
+
+.orbit-outer.orbital-node:hover {
+  animation-play-state: paused;
+}
+
+/* Node type variations */
+.node-speaker {
+  background: linear-gradient(135deg, #3B82F6, #2563EB);
+}
+
+.node-organizer {
+  background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+}
+
+.node-attendee {
+  background: linear-gradient(135deg, #14B8A6, #0D9488);
+}
+
+/* Keyframes */
+@keyframes orbit {
+  0% {
+    transform: rotate(var(--start-angle, 0deg)) translateX(var(--orbit-radius, 80px)) rotate(calc(-1 * var(--start-angle, 0deg)));
+  }
+  100% {
+    transform: rotate(calc(360deg + var(--start-angle, 0deg))) translateX(var(--orbit-radius, 80px)) rotate(calc(-1 * (360deg + var(--start-angle, 0deg))));
+  }
+}
+
+@keyframes sunGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px #FFD700, 0 0 40px rgba(255, 165, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 30px #FFD700, 0 0 60px rgba(255, 165, 0, 0.8);
+  }
+}
+
+/* Legend */
+.landing-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  position: relative;
+  z-index: 5;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.legend-host {
+  background: #FFD700;
+  box-shadow: 0 0 6px #FFD700;
+}
+
+.legend-speaker {
+  background: #3B82F6;
+}
+
+.legend-organizer {
+  background: #8B5CF6;
+}
+
+.legend-attendee {
+  background: #14B8A6;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .mesh-container {
+    height: 200px;
+  }
+
+  .orbit-inner {
+    width: 100px;
+    height: 100px;
+  }
+
+  .orbit-outer {
+    width: 180px;
+    height: 180px;
+  }
+
+  .orbit-inner.orbital-node {
+    --orbit-radius: 50px;
+  }
+
+  .orbit-outer.orbital-node {
+    --orbit-radius: 90px;
+  }
+
+  .sun {
+    width: 40px;
+    height: 40px;
+    font-size: 12px;
+  }
+
+  .orbital-node {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+    margin-left: -14px;
+    margin-top: -14px;
+  }
+
+  .landing-legend {
+    gap: 10px;
+    font-size: 10px;
+    flex-wrap: wrap;
+  }
+}
