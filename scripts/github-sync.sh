@@ -6,6 +6,13 @@
 
 set -uo pipefail
 
+# Guard: GITHUB_TOKEN must be set for pushes to work
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "[github-sync] WARNING: GITHUB_TOKEN is not set. GitHub mirroring is disabled." >&2
+  echo "[github-sync] Set GITHUB_TOKEN as a Replit secret to enable automatic sync." >&2
+  exit 1
+fi
+
 LAST_PUSHED=""
 
 echo "[github-sync] Starting GitHub sync watcher (fallback)..."
