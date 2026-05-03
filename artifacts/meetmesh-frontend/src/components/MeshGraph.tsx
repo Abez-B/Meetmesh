@@ -48,8 +48,8 @@ const CLUSTER_STEP = 0.04;  // fraction of cluster error corrected each frame
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Settle: stop RAF when total movement per frame drops below this (px)
-const SETTLE_THRESHOLD  = 0.3;
-const SETTLE_FRAMES_REQ = 8;
+const SETTLE_THRESHOLD  = 0.6;  // slightly generous — lets spring play out fully
+const SETTLE_FRAMES_REQ = 12;   // must stay below threshold for 12 frames in a row
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 3;
@@ -241,14 +241,14 @@ function MeshGraphInner({
 
     nonHost.forEach((p, i) => {
       const prev  = prevById.get(p.peerId);
-      const angle = (i / Math.max(1, total)) * TWO_PI - Math.PI / 2;
-      // New nodes: spread evenly around the circle with a small jitter
-      const jitter = prev ? 0 : (((i * 7919) % 31) - 15); // deterministic jitter
+      // New nodes start near the center so the spring force visibly flings them
+      // outward to their equilibrium ring — giving a satisfying burst-in animation.
+      const spawnJitter = i % 2 === 0 ? 1 : -1; // tiny offset so repulsion has direction
       nodes.push({
         id:      p.peerId,
         p,
-        x:       prev?.x ?? Math.cos(angle) * (BASE_DIST + jitter),
-        y:       prev?.y ?? Math.sin(angle) * (BASE_DIST + jitter),
+        x:       prev?.x ?? spawnJitter * 4,
+        y:       prev?.y ?? (i % 3 === 0 ? 4 : -4),
         visited: visitedNodes.has(p.peerId),
         role:    p.role as Exclude<ParticipantRole, 'Host'>,
         photo:   parseProfile(p.json)?.photo,

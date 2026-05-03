@@ -837,7 +837,8 @@
 }
 .hp-mesh-stage {
   flex: 1; position: relative; min-height: 200px;
-  display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.003);
+  background: rgba(255,255,255,0.003);
+  /* No flex centering — child mesh-graph-container fills via width/height 100% */
 }
 
 /* ─────────────────────────────────────────────
