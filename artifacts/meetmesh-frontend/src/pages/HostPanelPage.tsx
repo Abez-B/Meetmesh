@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, memo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { useMeetingState } from '../hooks/useMeetingState';
 import { useMeshClient } from '../hooks/useMeshClient';
@@ -12,22 +13,32 @@ import { NodeInfoCard } from '../components/NodeInfoCard';
 import { ParticipantGrid } from '../components/ParticipantGrid';
 import { HostPanelSkeleton } from '../components/SkeletonPage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ChatPanel } from '../components/ChatPanel';
 import type { MeetingRoom } from 'meetmesh-core';
+import { parseProfile } from 'meetmesh-core';
 import { Logo } from '../components/Logo';
 import { v4 as uuid } from 'uuid';
 import { copyToClipboard } from '../utils/clipboard';
+import { useUnreadDms } from '../mock/chatStore';
 import '../meetmesh-upgraded.css';
+import '../chat.css';
 
 const HostTopbar = memo(function HostTopbar({
   room,
   code,
   onPresent,
   onClose,
+  onChat,
+  chatActive,
+  chatHasUnread,
 }: {
   room: MeetingRoom;
   code: string;
   onPresent: () => void;
   onClose: () => void;
+  onChat: () => void;
+  chatActive: boolean;
+  chatHasUnread: boolean;
 }) {
   const elapsed = useElapsedTime(room.startedAt);
   const count = Object.keys(room.participants).length;
@@ -53,6 +64,14 @@ const HostTopbar = memo(function HostTopbar({
         </div>
       </div>
       <div className="hp-topbar-actions">
+        <button
+          className={`hp-btn-secondary hp-chat-btn${chatActive ? ' hp-btn-active' : ''}`}
+          onClick={onChat}
+          style={{ position: 'relative' }}
+        >
+          💬 Chat
+          {chatHasUnread && <span className="hp-chat-unread-dot" />}
+        </button>
         <button className="hp-btn-secondary" onClick={onPresent}>Present</button>
         <button className="hp-btn-danger" onClick={onClose}>End Event</button>
       </div>
@@ -72,6 +91,9 @@ export default function HostPanelPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatDmPeerId, setChatDmPeerId] = useState<string | null>(null);
+  const unreadDms = useUnreadDms();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchTerm(searchInput), 200);
@@ -105,20 +127,28 @@ export default function HostPanelPage() {
     return <HostPanelSkeleton />;
   }
 
-  const admit = (peerId: string) => client.admitParticipant(code, peerId);
-  const kick = (peerId: string) => client.kickParticipant(code, peerId);
+  const admit      = (peerId: string) => client.admitParticipant(code, peerId);
+  const kick       = (peerId: string) => client.kickParticipant(code, peerId);
   const changeRole = (peerId: string, role: string) => client.changeRole(code, peerId, role);
-  const close = () => setShowCloseConfirm(true);
+  const close      = () => setShowCloseConfirm(true);
   const confirmClose = () => {
     client.closeMeeting(code);
     showSuccess('Meeting ended');
     setShowCloseConfirm(false);
     navigate('/');
   };
+
   const selectedParticipant = selectedNodeId ? state.room.participants[selectedNodeId] : null;
   const joinUrl = `${window.location.origin}/join/${code}`;
 
-  // Role breakdown for the mesh header stats bar
+  const selfParticipant = state.selfPeerId ? state.room.participants[state.selfPeerId] : null;
+  const selfName   = selfParticipant?.displayName ?? 'Host';
+  const selfAvatar = selfParticipant ? parseProfile(selfParticipant.json)?.photo : undefined;
+
+  const hasUnreadDms = state.selfPeerId
+    ? [...unreadDms].some(key => key.split('|').includes(state.selfPeerId!))
+    : false;
+
   const roleCounts = useMemo(() =>
     participants.reduce<Record<string, number>>((acc, p) => {
       acc[p.role] = (acc[p.role] || 0) + 1;
@@ -138,9 +168,12 @@ export default function HostPanelPage() {
         code={code}
         onPresent={() => window.open(`/present/${code}`, '_blank')}
         onClose={close}
+        onChat={() => { setShowChat(v => !v); if (showChat) setChatDmPeerId(null); }}
+        chatActive={showChat}
+        chatHasUnread={hasUnreadDms}
       />
 
-      <div className="hp-grid">
+      <div className="hp-grid" style={{ marginRight: showChat ? 320 : 0 }}>
         <aside className="hp-sidebar">
           <div className="hp-code-card">
             <div className="hp-code-block">
@@ -209,7 +242,6 @@ export default function HostPanelPage() {
               }}
             />
           </div>
-
         </aside>
 
         <main className="hp-main">
@@ -241,21 +273,41 @@ export default function HostPanelPage() {
         </main>
       </div>
 
+      <AnimatePresence>
+        {showChat && (
+          <ChatPanel
+            selfPeerId={state.selfPeerId}
+            selfName={selfName}
+            selfAvatar={selfAvatar}
+            participants={participants}
+            initialDmPeerId={chatDmPeerId}
+            onClose={() => { setShowChat(false); setChatDmPeerId(null); }}
+          />
+        )}
+      </AnimatePresence>
+
       {selectedParticipant && (
         <NodeInfoCard
           participant={selectedParticipant}
           visited={visitedNodes.has(selectedParticipant.peerId)}
           position={selectedNodePos}
-          onClose={() => {
-            setSelectedNodeId(null);
-            setSelectedNodePos(null);
-          }}
+          onClose={() => { setSelectedNodeId(null); setSelectedNodePos(null); }}
           onMarkVisited={() => {
             const newSet = new Set(visitedNodes);
             if (newSet.has(selectedParticipant.peerId)) newSet.delete(selectedParticipant.peerId);
             else newSet.add(selectedParticipant.peerId);
             setVisitedNodes(newSet);
           }}
+          onMessage={
+            selectedParticipant.peerId !== state.selfPeerId
+              ? () => {
+                  setChatDmPeerId(selectedParticipant.peerId);
+                  setShowChat(true);
+                  setSelectedNodeId(null);
+                  setSelectedNodePos(null);
+                }
+              : undefined
+          }
         />
       )}
 

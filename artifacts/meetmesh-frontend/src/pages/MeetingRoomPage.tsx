@@ -24,6 +24,7 @@ export default function MeetingRoomPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSidebar, setSidebarOpen] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [dmPeerId, setDmPeerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (state.phase === 'ended') { navigate('/'); return; }
@@ -129,7 +130,9 @@ export default function MeetingRoomPage() {
               selfPeerId={state.selfPeerId}
               selfName={selfName}
               selfAvatar={selfAvatar}
-              onClose={() => setShowChat(false)}
+              participants={participantsList}
+              initialDmPeerId={dmPeerId}
+              onClose={() => { setShowChat(false); setDmPeerId(null); }}
             />
           )}
         </AnimatePresence>
@@ -185,6 +188,16 @@ export default function MeetingRoomPage() {
               else newSet.add(selectedParticipant.peerId);
               setVisitedNodes(newSet);
             }}
+            onMessage={
+              selectedParticipant.peerId !== state.selfPeerId
+                ? () => {
+                    setDmPeerId(selectedParticipant.peerId);
+                    setShowChat(true);
+                    setSelectedNodeId(null);
+                    setSelectedNodePos(null);
+                  }
+                : undefined
+            }
           />
         )}
       </AnimatePresence>

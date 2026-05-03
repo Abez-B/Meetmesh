@@ -33,9 +33,10 @@ interface Props {
   position: { x: number, y: number } | null;
   onClose: () => void;
   onMarkVisited: () => void;
+  onMessage?: () => void;
 }
 
-export function NodeInfoCard({ participant, visited, position, onClose, onMarkVisited }: Props) {
+export function NodeInfoCard({ participant, visited, position, onClose, onMarkVisited, onMessage }: Props) {
   const profile = parseProfile(participant.json);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -160,10 +161,20 @@ export function NodeInfoCard({ participant, visited, position, onClose, onMarkVi
           </div>
         )}
 
-        {/* ── Action ── */}
-        <button className="nodeinfo-visit-btn" onClick={onMarkVisited}>
-          {visited ? 'Remove Visit' : 'Mark as Visited'}
-        </button>
+        {/* ── Actions ── */}
+        <div className="nodeinfo-actions">
+          {onMessage && (
+            <button
+              className="nodeinfo-msg-btn"
+              onClick={() => { onMessage(); onClose(); }}
+            >
+              💬 Message
+            </button>
+          )}
+          <button className="nodeinfo-visit-btn" onClick={onMarkVisited}>
+            {visited ? 'Remove Visit' : 'Mark as Visited'}
+          </button>
+        </div>
       </motion.div>
     </motion.div>
   );
