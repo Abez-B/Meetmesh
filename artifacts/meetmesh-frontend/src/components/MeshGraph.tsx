@@ -470,6 +470,34 @@ function MeshGraphInner({
             <clipPath id={hostPhotoClipId}><circle cx="0" cy="0" r="30" /></clipPath>
           </defs>
 
+          {/* ── Ring guides — faint concentric tier boundaries ──────── */}
+          {(() => {
+            // Collect unique rings from current nodes
+            const rings = Array.from(
+              new Map(nonHostNodes.map(n => [n.ringIndex, n.restDist])).entries()
+            ).sort(([a], [b]) => a - b);
+            // Ring 0 = innermost (Organizers/Speakers) gets a purple tint,
+            // ring 1 gets blue, ring 2+ gets teal — matching the role colours.
+            const ringColors = [
+              'rgba(139,92,246,0.13)',  // ring 0 — organizer purple
+              'rgba(59,130,246,0.10)',  // ring 1 — speaker blue
+              'rgba(20,184,166,0.08)',  // ring 2 — attendee teal
+            ];
+            return rings.map(([ringIndex, restDist]) => (
+              <circle
+                key={`ring-guide-${ringIndex}`}
+                cx="0" cy="0"
+                r={restDist}
+                fill="none"
+                stroke={ringColors[ringIndex] ?? ringColors[2]}
+                strokeWidth="1.5"
+                strokeDasharray="4 14"
+                className="ring-guide"
+                style={{ animationDelay: `${ringIndex * -3}s` }}
+              />
+            ));
+          })()}
+
           {/* ── Host → node lines (all nodes) ─────────────────────────── */}
           <g className="constellation-lines">
             {nonHostNodes.map(node => (

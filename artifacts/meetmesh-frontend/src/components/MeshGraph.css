@@ -132,6 +132,18 @@
   }
 }
 
+/* Ring tier guides — subtle concentric orbit boundaries */
+.ring-guide {
+  animation: ring-guide-pulse 8s ease-in-out infinite;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+@keyframes ring-guide-pulse {
+  0%, 100% { opacity: 0.55; stroke-dashoffset: 0;   }
+  50%       { opacity: 1;    stroke-dashoffset: -36; }
+}
+
 /* Role-based node colors */
 .node-speaker .node-halo {
   stroke: #3B82F6;
