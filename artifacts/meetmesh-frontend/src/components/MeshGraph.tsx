@@ -35,21 +35,18 @@ const ROLE_PRIORITY: Record<ParticipantRole, number> = {
   Host: 0, Organizer: 1, Speaker: 2, Attendee: 3,
 };
 
-// ── Relaxation constants ──────────────────────────────────────────────────────
-// REST_DIST is computed dynamically inside relaxStep based on node count,
-// so the graph spreads as the room fills.
+// ── Physics constants ─────────────────────────────────────────────────────────
 const BASE_DIST    = 120;   // minimum rest distance from host (px)
 const DIST_SCALE   = 16;    // px added per sqrt(node) — gives logarithmic growth
 const MAX_DIST     = 320;   // hard cap (px)
-const SPRING_STEP  = 0.055; // fraction of spring error corrected each frame (no overshoot)
+const SPRING_STEP  = 0.055; // fraction of spring error corrected per frame (no overshoot)
 const MIN_DIST     = 56;    // minimum centre-to-centre distance between nodes (px)
 const CLUSTER_REST = 76;    // rest distance within visited cluster (px)
-const CLUSTER_STEP = 0.04;  // fraction of cluster error corrected each frame
+const CLUSTER_STEP = 0.04;  // fraction of cluster error corrected per frame
+const CURSOR_DIST  = 95;    // px — cursor repulsion bubble radius (graph coords)
+const CURSOR_STR   = 0.52;  // push strength per px of cursor overlap
+const DRIFT_AMP    = 0.07;  // px/frame — per-node sinusoidal breathing (~1.3px peak)
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Settle: stop RAF when total movement per frame drops below this (px)
-const SETTLE_THRESHOLD  = 0.6;  // slightly generous — lets spring play out fully
-const SETTLE_FRAMES_REQ = 12;   // must stay below threshold for 12 frames in a row
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 3;
@@ -81,7 +78,6 @@ function MeshGraphInner({
   const gRef         = useRef<SVGGElement>(null);
   const rafRef       = useRef<number>(0);
   const hoveredIdRef = useRef<string | null>(null);
-  const settleRef    = useRef(0); // consecutive settled frames
 
   const nodePhotoClipId   = useId();
   const hostPhotoClipId   = useId();
@@ -91,6 +87,7 @@ function MeshGraphInner({
   const transformRef = useRef({ x: 300, y: 300, k: 1 });
   const dimsRef      = useRef({ width: 600, height: 600 });
   const panRef       = useRef({ active: false, lastX: 0, lastY: 0 });
+  const mouseRef     = useRef<{ x: number; y: number } | null>(null);
 
   // refreshKey bumps any time the node list or visited state changes,
   // so the animation loop restarts from any settled state.
@@ -125,22 +122,10 @@ function MeshGraphInner({
     }
   }, []);
 
-  // ── Hover: freeze node in place ────────────────────────────────────────────
+  // ── Hover: pin/unpin a node (RAF always runs — no wake needed) ────────────
   const setHoveredNode = useCallback((nodeId: string | null) => {
     hoveredIdRef.current = nodeId;
-    // Wake the animation loop if it settled while a node was hovered
-    if (nodeId === null) {
-      settleRef.current = 0;
-      rafRef.current = requestAnimationFrame(function tick(ts) {
-        const mov = relaxStep();
-        flushPositions();
-        if (mov > SETTLE_THRESHOLD) { settleRef.current = 0; }
-        else if (++settleRef.current < SETTLE_FRAMES_REQ) {
-          rafRef.current = requestAnimationFrame(tick);
-        }
-      });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Position relaxation ────────────────────────────────────────────────────
   // Returns total movement this step (used to detect settling).
@@ -199,6 +184,25 @@ function MeshGraphInner({
           }
         }
       }
+
+      // 4. Cursor repulsion — nodes spring away from the mouse pointer
+      const mouse = mouseRef.current;
+      if (mouse) {
+        const mdx = node.x - mouse.x;
+        const mdy = node.y - mouse.y;
+        const md  = Math.sqrt(mdx * mdx + mdy * mdy) || 0.01;
+        if (md < CURSOR_DIST) {
+          const push = (CURSOR_DIST - md) * CURSOR_STR;
+          dx += push * (mdx / md);
+          dy += push * (mdy / md);
+        }
+      }
+
+      // 5. Subtle alive drift — unique Lissajous phase per node index
+      //    Keeps the graph gently breathing even at rest (~1.3 px peak-to-peak)
+      const t = Date.now() * 0.00018;
+      dx += Math.sin(t * 0.75 + i * 1.7321) * DRIFT_AMP;
+      dy += Math.cos(t * 0.60 + i * 2.8912) * DRIFT_AMP;
 
       node.x += dx;
       node.y += dy;
@@ -262,10 +266,11 @@ function MeshGraphInner({
     setRefreshKey(k => k + 1); // wake animation loop
   }, [participants, visitedNodes, relaxStep, flushPositions]);
 
-  // ── Animation loop — auto-stops when settled ───────────────────────────────
+  // ── Animation loop — runs continuously while nodes exist ──────────────────
+  // Drift + cursor repulsion mean the graph is always gently alive; we never
+  // auto-stop so hover repulsion is always picked up on the very next frame.
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
-    settleRef.current = 0;
     if (nodeCount === 0) return;
 
     if (disableSimulation) {
@@ -273,20 +278,14 @@ function MeshGraphInner({
     }
 
     const tick = () => {
-      const mov = relaxStep();
+      relaxStep();
       flushPositions();
-
-      if (mov < SETTLE_THRESHOLD) {
-        if (++settleRef.current >= SETTLE_FRAMES_REQ) return; // fully settled — stop
-      } else {
-        settleRef.current = 0;
-      }
       rafRef.current = requestAnimationFrame(tick);
     };
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [refreshKey, disableSimulation, relaxStep, flushPositions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshKey, nodeCount, disableSimulation, relaxStep, flushPositions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Search highlight ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -389,6 +388,19 @@ function MeshGraphInner({
     (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId);
   };
 
+  // ── Cursor tracking for repulsion (works on all pages, even disableInteractions) ──
+  const handleCursorMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const { width: svgW, height: svgH } = dimsRef.current;
+    const svgX = (e.clientX - rect.left) / rect.width  * svgW;
+    const svgY = (e.clientY - rect.top)  / rect.height * svgH;
+    const { x: tx, y: ty, k } = transformRef.current;
+    mouseRef.current = { x: (svgX - tx) / k, y: (svgY - ty) / k };
+  };
+  const handleCursorLeave = () => { mouseRef.current = null; };
+
   const handleNodeClick = (node: GraphNode, event: React.MouseEvent) =>
     onNodeClick(node.id, { x: event.clientX, y: event.clientY });
 
@@ -409,6 +421,8 @@ function MeshGraphInner({
         onPointerMove={disableInteractions  ? undefined : handlePanMove}
         onPointerUp={disableInteractions    ? undefined : handlePanEnd}
         onPointerLeave={disableInteractions ? undefined : handlePanEnd}
+        onMouseMove={handleCursorMove}
+        onMouseLeave={handleCursorLeave}
       >
         <rect width="100%" height="100%" fill="transparent" style={{ pointerEvents: 'all' }} />
 
