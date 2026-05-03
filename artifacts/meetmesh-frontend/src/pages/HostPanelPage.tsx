@@ -1,21 +1,21 @@
 import { useEffect, useState, useMemo, memo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { useMeetingState } from '../hooks/useMeetingState';
 import { useMeshClient } from '../hooks/useMeshClient';
 import { useElapsedTime } from '../hooks/useElapsedTime';
 import { useToast } from '../components/ToastProvider';
 import { WaitingList } from '../components/WaitingList';
-import { MeetingCodeCard } from '../components/MeetingCodeCard';
 import { ConnectionDot } from '../components/ConnectionDot';
 import { MeshGraph } from '../components/MeshGraph';
 import { NodeInfoCard } from '../components/NodeInfoCard';
 import { ParticipantGrid } from '../components/ParticipantGrid';
 import { HostPanelSkeleton } from '../components/SkeletonPage';
-import { RockerSwitch } from '../components/RockerSwitch';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import type { MeetingRoom } from 'meetmesh-core';
 import { Logo } from '../components/Logo';
 import { v4 as uuid } from 'uuid';
+import { copyToClipboard } from '../utils/clipboard';
 import '../meetmesh-upgraded.css';
 
 const HostTopbar = memo(function HostTopbar({
@@ -116,6 +116,20 @@ export default function HostPanelPage() {
     navigate('/');
   };
   const selectedParticipant = selectedNodeId ? state.room.participants[selectedNodeId] : null;
+  const joinUrl = `${window.location.origin}/join/${code}`;
+
+  // Role breakdown for the mesh header stats bar
+  const roleCounts = useMemo(() =>
+    participants.reduce<Record<string, number>>((acc, p) => {
+      acc[p.role] = (acc[p.role] || 0) + 1;
+      return acc;
+    }, {}),
+    [participants]
+  );
+
+  const ROLE_COLORS: Record<string, string> = {
+    Host: '#FFD700', Organizer: '#A78BFA', Speaker: '#60A5FA', Attendee: '#2DD4BF',
+  };
 
   return (
     <div className="hp-root">
@@ -132,8 +146,22 @@ export default function HostPanelPage() {
             <div className="hp-code-block">
               <span className="hp-code-label">Meeting code</span>
               <div className="hp-code-value">{code}</div>
+              <button
+                className="hp-copy-link-btn"
+                onClick={() => { copyToClipboard(joinUrl); showSuccess('Join link copied'); }}
+                title="Copy join link"
+              >
+                Copy link
+              </button>
             </div>
-            <div className="hp-qr">▦</div>
+            <div
+              className="hp-qr"
+              style={{ background: '#fff', borderRadius: 6, padding: 5, cursor: 'pointer', border: 'none' }}
+              onClick={() => window.open(joinUrl, '_blank')}
+              title="Open join page"
+            >
+              <QRCodeSVG value={joinUrl} size={46} bgColor="#ffffff" fgColor="#000000" level="M" />
+            </div>
           </div>
 
           <div className="hp-section">
@@ -182,20 +210,21 @@ export default function HostPanelPage() {
             />
           </div>
 
-          <div style={{ display: 'none' }}>
-            <MeetingCodeCard code={code} eventName={state.room.eventName} />
-            <RockerSwitch
-              checked={state.room.waitingRoomEnabled}
-              onChange={() => client.toggleWaitingRoom(code, !state.room?.waitingRoomEnabled)}
-            />
-          </div>
         </aside>
 
         <main className="hp-main">
           <div className="hp-mesh-card">
             <div className="hp-mesh-head">
               <span className="hp-section-title">Live Mesh View</span>
-              <span style={{ fontSize: 11, color: '#444' }}>{participants.length} nodes</span>
+              <div className="hp-role-stats">
+                {(['Host', 'Organizer', 'Speaker', 'Attendee'] as const)
+                  .filter(r => roleCounts[r] > 0)
+                  .map(role => (
+                    <span key={role} className="hp-role-stat" style={{ color: ROLE_COLORS[role] }}>
+                      {roleCounts[role]}&thinsp;{role}{roleCounts[role] > 1 && role !== 'Host' ? 's' : ''}
+                    </span>
+                  ))}
+              </div>
             </div>
             <div className="hp-mesh-stage" style={{ flex: 1, minHeight: 0 }}>
               <MeshGraph

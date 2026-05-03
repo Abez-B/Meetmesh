@@ -107,6 +107,11 @@ function MeshGraphInner({
   const [nodeCount,   setNodeCount]   = useState(0);
   const [refreshKey,  setRefreshKey]  = useState(0);
 
+  // Hover tooltip — lightweight name+role popover shown without a click
+  const [tooltip, setTooltip] = useState<{
+    name: string; role: string; color: string; x: number; y: number;
+  } | null>(null);
+
   // ── Transform ──────────────────────────────────────────────────────────────
   const applyTransform = useCallback((t: { x: number; y: number; k: number }) => {
     gRef.current?.setAttribute(
@@ -547,8 +552,14 @@ function MeshGraphInner({
                 data-node-id={node.id}
                 className={`constellation-node node-${node.role.toLowerCase()}`}
                 transform="translate(0,0)"
-                onPointerEnter={disableInteractions ? undefined : () => setHoveredNode(node.id)}
-                onPointerLeave={disableInteractions ? undefined : () => setHoveredNode(null)}
+                onPointerEnter={disableInteractions ? undefined : (e) => {
+                  setHoveredNode(node.id);
+                  setTooltip({ name: node.p.displayName, role: node.role, color: theme.ring, x: e.clientX, y: e.clientY });
+                }}
+                onPointerLeave={disableInteractions ? undefined : () => {
+                  setHoveredNode(null);
+                  setTooltip(null);
+                }}
                 onClick={e => handleNodeClick(node, e)}
                 style={{ cursor: 'pointer', '--node-ring-color': theme.ring } as React.CSSProperties}
               >
@@ -576,6 +587,19 @@ function MeshGraphInner({
           })}
         </g>
       </svg>
+
+      {tooltip && (
+        <div
+          className="mesh-tooltip"
+          style={{ left: tooltip.x, top: tooltip.y - 56 }}
+          aria-hidden
+        >
+          <span className="mesh-tooltip-name">{tooltip.name}</span>
+          <span className="mesh-tooltip-role" style={{ color: tooltip.color }}>
+            {tooltip.role}
+          </span>
+        </div>
+      )}
 
       {!disableInteractions && (
         <div className="mesh-zoom-controls">

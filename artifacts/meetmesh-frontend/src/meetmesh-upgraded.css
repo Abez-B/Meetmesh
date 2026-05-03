@@ -831,6 +831,43 @@
 .hp-search-input:focus { border-color: rgba(255,255,255,0.16); }
 .hp-main { display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .hp-mesh-card { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+/* Role stats row in mesh header */
+.hp-role-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hp-role-stat {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+/* Copy link button in sidebar code card */
+.hp-copy-link-btn {
+  margin-top: 7px;
+  padding: 4px 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #888;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.hp-copy-link-btn:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #d4d4d4;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .hp-mesh-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;
