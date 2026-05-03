@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMeetingState } from '../hooks/useMeetingState';
 import { useMeshClient }   from '../hooks/useMeshClient';
-import { WaitingList }     from '../components/WaitingList';
-import { MeetingCodeCard } from '../components/MeetingCodeCard';
-import { ConnectionDot }   from '../components/ConnectionDot';
-import { Logo }            from '../components/Logo';
+import { WaitingList }      from '../components/WaitingList';
+import { MeetingCodeCard }  from '../components/MeetingCodeCard';
+import { ConnectionDot }    from '../components/ConnectionDot';
+import { Logo }             from '../components/Logo';
+import { MeshBackground }   from '../components/MeshBackground';
 import '../meetmesh-upgraded.css';
 
 export default function WaitingRoomPage() {
@@ -48,6 +49,7 @@ export default function WaitingRoomPage() {
         </nav>
 
         <div className="wr-lobby">
+          <MeshBackground />
           <motion.div
             className="wr-lobby-card"
             initial={{ opacity: 0, scale: 0.96 }}
