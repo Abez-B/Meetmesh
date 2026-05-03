@@ -41,7 +41,7 @@ export function ParticipantGrid({ room, selfPeerId, onKick, onRole, onSelect, se
             <RoleBadge role={p.role} />
           </div>
 
-          {isHost && p.peerId !== selfPeerId && (
+          {isHost && p.peerId !== selfPeerId && (onKick || onRole) && (
             <div className="participant-grid-actions">
               <TooltipButton
                 text="Kick"

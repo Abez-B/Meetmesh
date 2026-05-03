@@ -11,7 +11,7 @@ export interface Reaction {
 
 type Listener = (reactions: Reaction[]) => void;
 
-const TTL = 4200; // ms — reaction stays visible
+const TTL = 1800; // ms — reaction stays visible
 
 class ReactionStore {
   private _all: Reaction[] = [];

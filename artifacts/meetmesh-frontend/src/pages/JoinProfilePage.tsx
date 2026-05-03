@@ -6,9 +6,7 @@ import { CameraCapture } from '../components/CameraCapture';
 import { TooltipButton } from '../components/TooltipButton';
 import { isValidMeetingCode } from 'meetmesh-core';
 import { Logo } from '../components/Logo';
-import { LinkedInPhotoPermission } from '../components/LinkedInPhotoPermission';
 import '../meetmesh-upgraded.css';
-import '../linkedin-perm.css';
 
 const LINKEDIN_PEER_REGEX = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)\/?/i;
 
@@ -93,15 +91,9 @@ export default function JoinProfilePage() {
     }
   };
 
-  const [liPermDismissed, setLiPermDismissed] = useState(() =>
-    localStorage.getItem('meetmesh_linkedin_photo_perm') === 'denied'
-  );
-
   const linkedInMatch    = linkedIn.trim().match(LINKEDIN_PEER_REGEX);
   const linkedInValidity = linkedIn.trim() ? (linkedInMatch ? 'valid' : 'invalid') : 'idle';
-  const linkedInUsername = linkedInMatch ? linkedInMatch[1] : null;
-  const showLiPerm = step === 2 && linkedInValidity === 'valid' && !photo && !liPermDismissed;
-  const normalizedCode = code?.toUpperCase() ?? '----';
+  const normalizedCode   = code?.toUpperCase() ?? '----';
   const hasCachedProfile = Boolean(name || linkedIn || github || bio || photo);
 
   return (
@@ -262,16 +254,6 @@ export default function JoinProfilePage() {
                     </AnimatePresence>
                   </div>
                 </div>
-
-                <AnimatePresence>
-                  {showLiPerm && linkedInUsername && (
-                    <LinkedInPhotoPermission
-                      linkedInUsername={linkedInUsername}
-                      onPhotoFetched={(url) => { setPhoto(url); setLiPermDismissed(true); }}
-                      onDismiss={() => setLiPermDismissed(true)}
-                    />
-                  )}
-                </AnimatePresence>
 
                 <div className="jp-field-row">
                   <div className="jp-field">
