@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "MeetMesh Frontend"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "GitHub Sync"
+
 [[workflows.workflow]]
 name = "MeetMesh Frontend"
 author = "agent"
@@ -31,6 +35,17 @@ waitForPort = 5173
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "GitHub Sync"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/github-sync.sh"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
