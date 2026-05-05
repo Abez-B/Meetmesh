@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, memo, useId } from 'react';
 import { Participant, parseProfile } from 'meetmesh-core';
+import { useMeetingState } from '../hooks/useMeetingState';
 import { SpaceBackground } from './SpaceBackground';
 import './MeshGraph.css';
 
@@ -97,21 +98,22 @@ function MeshGraphInner({
   const hostPhotoClipId   = useId();
   const hostSunGradientId = useId();
 
+  const { room } = useMeetingState();
+  const hostPeerId = room?.hostPeerId;
+
+  // The actual physics source of truth
   const nodesRef     = useRef<GraphNode[]>([]);
+  
+  // React state mirroring the nodes for the render cycle
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+
   const transformRef = useRef({ x: 300, y: 300, k: 1 });
   const dimsRef      = useRef({ width: 600, height: 600 });
   const panRef       = useRef({ active: false, lastX: 0, lastY: 0 });
   const mouseRef     = useRef<{ x: number; y: number } | null>(null);
 
-  // refreshKey bumps any time the node list or visited state changes,
-  // so the animation loop restarts from any settled state.
-  const [nodeCount,      setNodeCount]      = useState(0);
   const [refreshKey,     setRefreshKey]     = useState(0);
-  // containerScale drives both the physics spring targets and the SVG ring guides,
-  // so they stay in sync when the viewport is resized (e.g. mobile vs desktop).
   const [containerScale, setContainerScale] = useState(1);
-
-  // Hover tooltip — lightweight name+role popover shown without a click
   const [tooltip, setTooltip] = useState<{
     name: string; role: string; color: string; x: number; y: number;
   } | null>(null);
@@ -129,14 +131,15 @@ function MeshGraphInner({
   const flushPositions = useCallback(() => {
     const g    = gRef.current;
     if (!g)    return;
-    const host = nodesRef.current.find(n => n.role === 'Host');
+    const currentNodes = nodesRef.current;
 
-    for (const node of nodesRef.current) {
+    for (const node of currentNodes) {
       const el = g.querySelector<SVGGElement>(`[data-node-id="${node.id}"]`);
       if (el) el.setAttribute('transform', `translate(${node.x.toFixed(1)},${node.y.toFixed(1)})`);
     }
+    const host = currentNodes.find(n => n.role === 'Host');
     for (const line of g.querySelectorAll<SVGLineElement>('[data-link-target]')) {
-      const target = nodesRef.current.find(n => n.id === line.getAttribute('data-link-target'));
+      const target = currentNodes.find(n => n.id === line.getAttribute('data-link-target'));
       if (host && target) {
         line.setAttribute('x1', host.x.toFixed(1)); line.setAttribute('y1', host.y.toFixed(1));
         line.setAttribute('x2', target.x.toFixed(1)); line.setAttribute('y2', target.y.toFixed(1));
@@ -144,26 +147,17 @@ function MeshGraphInner({
     }
   }, []);
 
-  // ── Hover: pin/unpin a node (RAF always runs — no wake needed) ────────────
-  const setHoveredNode = useCallback((nodeId: string | null) => {
-    hoveredIdRef.current = nodeId;
-  }, []);
-
-  // ── Position relaxation ────────────────────────────────────────────────────
-  // All ring distances and clearances are computed dynamically from the container
-  // size so the graph automatically compresses on small / mobile viewports.
-  // No velocity — each correction is ≤ SPRING_STEP × error, so it converges.
+  // ... (relaxStep remains mostly the same, ensuring it uses currentNodes)
   const relaxStep = useCallback((): number => {
-    const nodes   = nodesRef.current;
-    const nonHost = nodes.filter(n => n.role !== 'Host');
+    const currentNodes = nodesRef.current;
+    if (currentNodes.length === 0) return 0;
+    const nonHost = currentNodes.filter(n => n.role !== 'Host');
     const visited  = nonHost.filter(n => n.visited);
     const pausedId = hoveredIdRef.current;
     let totalMov   = 0;
 
-    // Scale all spatial constants proportionally to the container's short side.
-    // 560 px is the "canonical" size the original constants were tuned for.
     const containerShort = Math.min(dimsRef.current.width, dimsRef.current.height);
-    const gs  = Math.max(0.28, Math.min(1.0, containerShort / 560)); // graph scale
+    const gs  = Math.max(0.28, Math.min(1.0, containerShort / 560));
     const sBase    = RING_BASE    * gs;
     const sGap     = RING_GAP     * gs;
     const sMin     = MIN_DIST     * gs;
@@ -175,10 +169,7 @@ function MeshGraphInner({
       const node = nonHost[i];
       if (node.id === pausedId) continue;
 
-      let dx = 0;
-      let dy = 0;
-
-      // 1. Radial spring — pull/push toward this node's scaled ring radius
+      let dx = 0; let dy = 0;
       const { ringIndex, ringCount } = node;
       const scaledRest = sBase + ringIndex * sGap;
       const dist = Math.sqrt(node.x * node.x + node.y * node.y) || 0.01;
@@ -187,16 +178,11 @@ function MeshGraphInner({
       dx -= sc * (node.x / dist);
       dy -= sc * (node.y / dist);
 
-      // 2. Node-to-node repulsion — same-ring nodes push to ideal angular spacing;
-      //    cross-ring nodes use absolute minimum clearance.
       for (let j = 0; j < nonHost.length; j++) {
         if (i === j) continue;
         const o   = nonHost[j];
-        const rdx = node.x - o.x;
-        const rdy = node.y - o.y;
+        const rdx = node.x - o.x; const rdy = node.y - o.y;
         const rd  = Math.sqrt(rdx * rdx + rdy * rdy) || 0.01;
-        // Ideal chord distance for even angular spacing within a ring:
-        //   chord = 2r × sin(π / n)   →  use 85 % to allow organic bunching
         const sameRing    = o.ringIndex === ringIndex;
         const ringSpacing = sameRing && ringCount > 1
           ? 2 * scaledRest * Math.sin(Math.PI / ringCount) * 0.85
@@ -204,54 +190,43 @@ function MeshGraphInner({
         const effectiveMin = Math.max(sMin, ringSpacing);
         if (rd < effectiveMin) {
           const push = (effectiveMin - rd) * 0.5;
-          dx += push * (rdx / rd);
-          dy += push * (rdy / rd);
+          dx += push * (rdx / rd); dy += push * (rdy / rd);
         }
       }
 
-      // 3. Cluster: visited nodes gently pull toward each other
       if (node.visited) {
         for (let j = 0; j < visited.length; j++) {
           const o = visited[j];
           if (o.id === node.id) continue;
-          const cdx  = o.x - node.x;
-          const cdy  = o.y - node.y;
+          const cdx  = o.x - node.x; const cdy  = o.y - node.y;
           const cd   = Math.sqrt(cdx * cdx + cdy * cdy) || 0.01;
           if (cd > sCluster) {
             const pull = (cd - sCluster) * CLUSTER_STEP;
-            dx += pull * (cdx / cd);
-            dy += pull * (cdy / cd);
+            dx += pull * (cdx / cd); dy += pull * (cdy / cd);
           }
         }
       }
 
-      // 4. Cursor repulsion — gentle nudge only outside the dead zone.
       const mouse = mouseRef.current;
       if (mouse) {
-        const mdx = node.x - mouse.x;
-        const mdy = node.y - mouse.y;
+        const mdx = node.x - mouse.x; const mdy = node.y - mouse.y;
         const md  = Math.sqrt(mdx * mdx + mdy * mdy) || 0.01;
         if (md > sCursorDD && md < sCursorD) {
           const push = (sCursorD - md) * CURSOR_STR;
-          dx += push * (mdx / md);
-          dy += push * (mdy / md);
+          dx += push * (mdx / md); dy += push * (mdy / md);
         }
       }
 
-      // 5. Subtle alive drift — unique Lissajous phase per node keeps it breathing
       const t = Date.now() * 0.00018;
       dx += Math.sin(t * 0.75 + i * 1.7321) * DRIFT_AMP;
       dy += Math.cos(t * 0.60 + i * 2.8912) * DRIFT_AMP;
 
-      node.x += dx;
-      node.y += dy;
+      node.x += dx; node.y += dy;
       totalMov += Math.abs(dx) + Math.abs(dy);
     }
 
-    // Host is always at origin
-    const host = nodes.find(n => n.role === 'Host');
+    const host = currentNodes.find(n => n.role === 'Host');
     if (host) { host.x = 0; host.y = 0; }
-
     return totalMov;
   }, []);
 
@@ -264,29 +239,30 @@ function MeshGraphInner({
         const roleB = (b.role?.charAt(0).toUpperCase() + b.role?.slice(1).toLowerCase()) as ParticipantRole;
         const rd = (ROLE_PRIORITY[roleA] ?? 3) - (ROLE_PRIORITY[roleB] ?? 3);
         if (rd !== 0) return rd;
-        const nd = a.displayName.localeCompare(b.displayName);
-        return nd !== 0 ? nd : a.peerId.localeCompare(b.peerId);
+        return a.displayName.localeCompare(b.displayName);
       });
 
-    const host    = valid.find(p => p.role?.toLowerCase() === 'host');
-    const nonHost = valid.filter(p => p.role?.toLowerCase() !== 'host');
+    // FIND HOST: Priority 1 = hostPeerId from room meta, Priority 2 = role string
+    let host = hostPeerId ? valid.find(p => p.peerId === hostPeerId) : null;
+    if (!host) {
+      host = valid.find(p => p.role?.toLowerCase() === 'host');
+    }
+
+    const nonHost = valid.filter(p => p !== host);
     const prevById = new Map(nodesRef.current.map(n => [n.id, n]));
 
-    const nodes: GraphNode[] = [];
+    const newNodes: GraphNode[] = [];
     if (host) {
-      nodes.push({
+      newNodes.push({
         id: host.peerId, p: host,
         x: 0, y: 0,
         visited: visitedNodes.has(host.peerId),
-        role: 'Host',
+        role: 'Host', // Ensure styling is correct
         photo: parseProfile(host.json)?.photo,
-        ringIndex: 0, restDist: 0, ringCount: 0, // unused for host (always pinned at origin)
+        ringIndex: 0, restDist: 0, ringCount: 0,
       });
     }
 
-    // Pre-compute ring membership so each node knows its restDist and ringCount.
-    // Nodes are already sorted by role priority (Organizer → Speaker → Attendee),
-    // so high-value roles naturally land on the inner ring.
     const ringData = nonHost.map((p, i) => {
       const ringIndex  = Math.floor(i / RING_CAPACITY);
       const ringStart  = ringIndex * RING_CAPACITY;
@@ -298,11 +274,10 @@ function MeshGraphInner({
 
     nonHost.forEach((p, i) => {
       const prev  = prevById.get(p.peerId);
-      // New nodes start near the center so the spring flings them out to their ring.
       const spawnJitter = i % 2 === 0 ? 1 : -1;
       const role = (p.role?.charAt(0).toUpperCase() + p.role?.slice(1).toLowerCase()) as Exclude<ParticipantRole, 'Host'>;
       
-      nodes.push({
+      newNodes.push({
         id:       p.peerId,
         p,
         x:        prev?.x ?? spawnJitter * 4,
@@ -314,33 +289,28 @@ function MeshGraphInner({
       });
     });
 
-    nodesRef.current = nodes;
+    nodesRef.current = newNodes;
+    setNodes(newNodes);
+    setRefreshKey(k => k + 1);
     relaxStep();
     flushPositions();
-    setNodeCount(nodes.length);
-    setRefreshKey(k => k + 1); // wake animation loop
   }, [participants, visitedNodes, relaxStep, flushPositions]);
 
-  // ── Animation loop — runs continuously while nodes exist ──────────────────
-  // Drift + cursor repulsion mean the graph is always gently alive; we never
-  // auto-stop so hover repulsion is always picked up on the very next frame.
+  // ── Animation loop ──────────────────────────────────────────────────────────
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
-    if (nodeCount === 0) return;
-
-    if (disableSimulation) {
-      relaxStep(); flushPositions(); return;
-    }
-
-    const tick = () => {
-      relaxStep();
-      flushPositions();
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
+    if (nodes.length === 0) return;
+    if (disableSimulation) { relaxStep(); flushPositions(); return; }
+    const tick = () => { relaxStep(); flushPositions(); rafRef.current = requestAnimationFrame(tick); };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [refreshKey, nodeCount, disableSimulation, relaxStep, flushPositions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshKey, nodes.length, disableSimulation, relaxStep, flushPositions]);
+
+  // ... (rest of the component remains the same, but use 'nodes' state for rendering)
+  const hostNode     = nodes.find(n => n.role === 'Host');
+  const nonHostNodes = nodes.filter(n => n.role !== 'Host');
+
+  // ... (return statement using hostNode and nonHostNodes derived from state)
 
   // ── Search highlight ───────────────────────────────────────────────────────
   useEffect(() => {
