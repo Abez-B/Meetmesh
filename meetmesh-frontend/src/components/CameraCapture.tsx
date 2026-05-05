@@ -46,8 +46,33 @@ export function CameraCapture({ onCapture, onSkip }: Props) {
     const sy = (video.videoHeight - size) / 2;
     ctx.drawImage(video, sx, sy, size, size, 0, 0, 200, 200);
     const base64 = canvas.toDataURL('image/jpeg', 0.6);
-    stream.getTracks().forEach(t => t.stop());
+    if (stream) stream.getTracks().forEach(t => t.stop());
     onCapture(base64);
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const size = Math.min(img.width, img.height);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, 200, 200);
+        const base64 = canvas.toDataURL('image/jpeg', 0.6);
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        onCapture(base64);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -57,8 +82,22 @@ export function CameraCapture({ onCapture, onSkip }: Props) {
         <p style={{ color: '#737373', fontSize: 12 }}>Helps others recognise you in the mesh.</p>
       </div>
 
+      <input 
+        type="file" 
+        accept="image/*" 
+        ref={fileInputRef} 
+        style={{ display: 'none' }} 
+        onChange={handleUpload}
+      />
+
       {error ? (
-        <div className="error-inline">{error}</div>
+        <div style={{
+          width: 200, height: 200, borderRadius: '50%', border: '1px dashed rgba(255,255,255,0.1)',
+          margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, color: '#666', textAlign: 'center', padding: 20
+        }}>
+          {error}
+        </div>
       ) : (
         <div style={{
           position: 'relative',
@@ -84,7 +123,6 @@ export function CameraCapture({ onCapture, onSkip }: Props) {
               animation: 'cameraFlash 220ms ease-out forwards',
             }} />
           )}
-          {/* Corner bracket overlay */}
           <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.1)' }} />
         </div>
       )}
@@ -94,6 +132,11 @@ export function CameraCapture({ onCapture, onSkip }: Props) {
           text="Skip"
           onClick={onSkip}
           style={{ width: '80px', height: '35px' } as any}
+        />
+        <TooltipButton
+          text="Upload"
+          onClick={() => fileInputRef.current?.click()}
+          style={{ height: '35px' } as any}
         />
         {!error && (
           <TooltipButton

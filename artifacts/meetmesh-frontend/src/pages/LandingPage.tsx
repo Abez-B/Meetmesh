@@ -76,12 +76,13 @@ export default function LandingPage() {
     setError('');
 
     const peerId = sessionStorage.getItem('meetmesh_peer_id') ?? localStorage.getItem('meetmesh_peer_id') ?? uuid();
+    const photoToSave = hostPhoto === 'SKIP' ? undefined : hostPhoto;
     const profileJson = JSON.stringify({
       name: hostName.trim() || undefined,
       linkedIn: hostLinkedIn.trim() || undefined,
       github: hostGithub.trim() || undefined,
       bio: hostBio.trim() || undefined,
-      photo: hostPhoto,
+      photo: photoToSave,
     });
 
     localStorage.setItem('meetmesh_host_setup_cache', JSON.stringify({
@@ -91,7 +92,7 @@ export default function LandingPage() {
       hostBio: hostBio.trim(),
       eventSubtitle: eventSubtitle.trim(),
       eventDescription: eventDescription.trim(),
-      hostPhoto,
+      hostPhoto: photoToSave,
     }));
 
     savePendingEventMeta({ subtitle: eventSubtitle.trim() || undefined, description: eventDescription.trim() || undefined });
@@ -262,15 +263,28 @@ export default function LandingPage() {
 
                         <div className="mm-field">
                           <label className="mm-label">Host photo (optional)</label>
-                          {hostPhoto ? (
+                          {hostPhoto && hostPhoto !== 'SKIP' ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                               <div style={{ width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }}>
                                 <img src={hostPhoto} alt="Host" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               </div>
                               <TooltipButton text="Retake" onClick={() => setHostPhoto(undefined)} variant="default" />
                             </div>
+                          ) : hostPhoto === 'SKIP' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ 
+                                width: 56, height: 56, borderRadius: '50%', border: '1px dashed rgba(255,255,255,0.1)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, background: 'rgba(255,255,255,0.02)'
+                              }}>
+                                👤
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Photo skipped.</div>
+                                <TooltipButton text="Add Photo" onClick={() => setHostPhoto(undefined)} variant="default" />
+                              </div>
+                            </div>
                           ) : (
-                            <CameraCapture onCapture={setHostPhoto} onSkip={() => {}} />
+                            <CameraCapture onCapture={setHostPhoto} onSkip={() => setHostPhoto('SKIP')} />
                           )}
                         </div>
 
