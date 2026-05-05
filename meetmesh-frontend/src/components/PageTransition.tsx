@@ -19,7 +19,7 @@ function routeDepth(pathname: string): number {
 
 let _prevDepth = 0;
 
-const variants = {
+const variants: any = {
   initial: (dir: number) => ({
     opacity: 0,
     y: dir >= 0 ? 18 : -18,
