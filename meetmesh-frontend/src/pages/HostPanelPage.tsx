@@ -267,6 +267,7 @@ export default function HostPanelPage() {
               <MeshGraph
                 participants={participants}
                 visitedNodes={visitedNodes}
+                hostPeerId={state.room.hostPeerId}
                 searchTerm={searchTerm}
                 onNodeClick={(peerId, pos) => {
                   setSelectedNodeId(peerId);

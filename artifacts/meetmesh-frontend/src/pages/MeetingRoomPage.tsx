@@ -115,6 +115,7 @@ export default function MeetingRoomPage() {
           <MeshGraph
             participants={participantsList}
             visitedNodes={visitedNodes}
+            hostPeerId={state.room.hostPeerId}
             searchTerm={searchTerm}
             onNodeClick={(peerId, pos) => {
               setSelectedNodeId(peerId);

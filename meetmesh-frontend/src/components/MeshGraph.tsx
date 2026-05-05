@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback, memo, useId } from 'react';
 import { Participant, parseProfile } from 'meetmesh-core';
-import { useMeetingState } from '../hooks/useMeetingState';
 import { SpaceBackground } from './SpaceBackground';
 import './MeshGraph.css';
 
@@ -8,6 +7,7 @@ interface Props {
   participants: Participant[];
   visitedNodes: Set<string>;
   onNodeClick: (peerId: string, pos?: { x: number; y: number }) => void;
+  hostPeerId?: string | null;
   searchTerm?: string;
   disableSimulation?: boolean;
   disableInteractions?: boolean;
@@ -84,7 +84,7 @@ function NodeLabel({ name, y, color }: { name: string; y: number; color: string 
 }
 
 function MeshGraphInner({
-  participants, visitedNodes, onNodeClick,
+  participants, visitedNodes, onNodeClick, hostPeerId,
   searchTerm = '', disableSimulation = false, disableInteractions = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -96,9 +96,6 @@ function MeshGraphInner({
   const nodePhotoClipId   = useId();
   const hostPhotoClipId   = useId();
   const hostSunGradientId = useId();
-
-  const { room } = useMeetingState();
-  const hostPeerId = room?.hostPeerId;
 
   // Physics state
   const nodesRef     = useRef<GraphNode[]>([]);
@@ -240,12 +237,14 @@ function MeshGraphInner({
         return a.displayName.localeCompare(b.displayName);
       });
 
+    // FIND HOST: Priority 1 = hostPeerId prop, Priority 2 = role string
     let hostParticipant = hostPeerId ? valid.find(p => p.peerId === hostPeerId) : null;
     if (!hostParticipant) {
       hostParticipant = valid.find(p => p.role?.toLowerCase() === 'host') || null;
     }
 
-    const nonHostParticipants = valid.filter(p => p !== hostParticipant);
+    // Filter by peerId to avoid object equality issues
+    const nonHostParticipants = valid.filter(p => p.peerId !== hostParticipant?.peerId);
     const prevById = new Map(nodesRef.current.map(n => [n.id, n]));
 
     const newNodes: GraphNode[] = [];

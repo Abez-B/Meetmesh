@@ -196,6 +196,7 @@ export default function PresentationPage() {
         <MeshGraph
           participants={participants}
           visitedNodes={EMPTY_SET}
+          hostPeerId={state.room.hostPeerId}
           disableInteractions
           onNodeClick={handleNodeClick}
         />
