@@ -258,17 +258,18 @@ function MeshGraphInner({
   // ── Rebuild nodes when participants or visited changes ─────────────────────
   useEffect(() => {
     const valid = participants
-      .filter(p => !p.peerId.startsWith('present-'))
+      .filter(p => !p.peerId?.startsWith('present-'))
       .sort((a, b) => {
-        const rd = ROLE_PRIORITY[a.role as ParticipantRole] - ROLE_PRIORITY[b.role as ParticipantRole];
+        const roleA = (a.role?.charAt(0).toUpperCase() + a.role?.slice(1).toLowerCase()) as ParticipantRole;
+        const roleB = (b.role?.charAt(0).toUpperCase() + b.role?.slice(1).toLowerCase()) as ParticipantRole;
+        const rd = (ROLE_PRIORITY[roleA] ?? 3) - (ROLE_PRIORITY[roleB] ?? 3);
         if (rd !== 0) return rd;
         const nd = a.displayName.localeCompare(b.displayName);
         return nd !== 0 ? nd : a.peerId.localeCompare(b.peerId);
       });
 
-    const host    = valid.find(p => p.role === 'Host');
-    const nonHost = valid.filter(p => p.role !== 'Host');
-    const total   = nonHost.length;
+    const host    = valid.find(p => p.role?.toLowerCase() === 'host');
+    const nonHost = valid.filter(p => p.role?.toLowerCase() !== 'host');
     const prevById = new Map(nodesRef.current.map(n => [n.id, n]));
 
     const nodes: GraphNode[] = [];
@@ -286,7 +287,7 @@ function MeshGraphInner({
     // Pre-compute ring membership so each node knows its restDist and ringCount.
     // Nodes are already sorted by role priority (Organizer → Speaker → Attendee),
     // so high-value roles naturally land on the inner ring.
-    const ringData = nonHost.map((_, i) => {
+    const ringData = nonHost.map((p, i) => {
       const ringIndex  = Math.floor(i / RING_CAPACITY);
       const ringStart  = ringIndex * RING_CAPACITY;
       const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHost.length);
@@ -299,13 +300,15 @@ function MeshGraphInner({
       const prev  = prevById.get(p.peerId);
       // New nodes start near the center so the spring flings them out to their ring.
       const spawnJitter = i % 2 === 0 ? 1 : -1;
+      const role = (p.role?.charAt(0).toUpperCase() + p.role?.slice(1).toLowerCase()) as Exclude<ParticipantRole, 'Host'>;
+      
       nodes.push({
         id:       p.peerId,
         p,
         x:        prev?.x ?? spawnJitter * 4,
         y:        prev?.y ?? (i % 3 === 0 ? 4 : -4),
         visited:  visitedNodes.has(p.peerId),
-        role:     p.role as Exclude<ParticipantRole, 'Host'>,
+        role:     role || 'Attendee',
         photo:    parseProfile(p.json)?.photo,
         ...ringData[i],
       });
