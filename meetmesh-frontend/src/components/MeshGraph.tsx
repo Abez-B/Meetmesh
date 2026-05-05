@@ -487,31 +487,7 @@ function MeshGraphInner({
             ))}
           </g>
 
-          {hostNode && (
-            <g
-              data-node-id={hostNode.id}
-              className="constellation-node node-host"
-              transform="translate(0,0)"
-              onClick={e => handleInnerNodeClick(hostNode, e)}
-              style={{ cursor: 'pointer', '--node-ring-color': ROLE_THEME.Host.ring } as React.CSSProperties}
-            >
-              <circle className="node-halo" r="44" fill="none" stroke={ROLE_THEME.Host.ring} strokeWidth="5" />
-              <circle className="node-core host-sun-core" r="38" fill={`url(#${hostSunGradientId})`} stroke="#FFA500" strokeWidth="3.2" />
-              {hostNode.photo
-                ? <image href={hostNode.photo} x="-38" y="-38" width="76" height="76" clipPath={`url(#${hostPhotoClipId})`} />
-                : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize="23px"
-                    fontFamily="JetBrains Mono, monospace" fontWeight="700" fill="#000">
-                    {hostNode.p.displayName.charAt(0).toUpperCase()}
-                  </text>
-              }
-              <circle className="host-ring" r="42" fill="none" stroke="white" strokeWidth="1.7"
-                strokeDasharray="6 4" opacity="0.82" />
-              <path className="host-crown" d="M -15 -50 L -7 -39 L 0 -50 L 7 -39 L 15 -50 L 15 -33 L -15 -33 Z"
-                fill={ROLE_THEME.Host.ring} stroke="#fff" strokeWidth="1" opacity="0.95" />
-              <NodeLabel name={hostNode.p.displayName} y={58} color={ROLE_THEME.Host.ring} />
-            </g>
-          )}
-
+          {/* ── Non-host nodes ────────────────────────────────────────── */}
           {nonHostNodes.map(node => {
             const theme = ROLE_THEME[node.role as ParticipantRole] ?? ROLE_THEME.Attendee;
             return (
@@ -553,6 +529,32 @@ function MeshGraphInner({
               </g>
             );
           })}
+
+          {/* ── Host node (Rendered last = drawn on top) ───────────────── */}
+          {hostNode && (
+            <g
+              data-node-id={hostNode.id}
+              className="constellation-node node-host"
+              transform="translate(0,0)"
+              onClick={e => handleInnerNodeClick(hostNode, e)}
+              style={{ cursor: 'pointer', '--node-ring-color': ROLE_THEME.Host.ring } as React.CSSProperties}
+            >
+              <circle className="node-halo" r="44" fill="none" stroke={ROLE_THEME.Host.ring} strokeWidth="5" />
+              <circle className="node-core host-sun-core" r="38" fill={`url(#${hostSunGradientId})`} stroke="#FFA500" strokeWidth="3.2" />
+              {hostNode.photo
+                ? <image href={hostNode.photo} x="-38" y="-38" width="76" height="76" clipPath={`url(#${hostPhotoClipId})`} />
+                : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize="23px"
+                    fontFamily="JetBrains Mono, monospace" fontWeight="700" fill="#000">
+                    {hostNode.p.displayName.charAt(0).toUpperCase()}
+                  </text>
+              }
+              <circle className="host-ring" r="42" fill="none" stroke="white" strokeWidth="1.7"
+                strokeDasharray="6 4" opacity="0.82" />
+              <path className="host-crown" d="M -15 -50 L -7 -39 L 0 -50 L 7 -39 L 15 -50 L 15 -33 L -15 -33 Z"
+                fill={ROLE_THEME.Host.ring} stroke="#fff" strokeWidth="1" opacity="0.95" />
+              <NodeLabel name={hostNode.p.displayName} y={58} color={ROLE_THEME.Host.ring} />
+            </g>
+          )}
         </g>
       </svg>
 
@@ -585,10 +587,11 @@ function MeshGraphInner({
 
 function arePropsEqual(prev: Props, next: Props): boolean {
   if (prev.participants.length !== next.participants.length) return false;
-  if (prev.searchTerm          !== next.searchTerm)          return false;
-  if (prev.visitedNodes        !== next.visitedNodes)        return false;
-  if (prev.disableSimulation   !== next.disableSimulation)   return false;
-  if (prev.disableInteractions !== next.disableInteractions) return false;
+  if (prev.hostPeerId           !== next.hostPeerId)           return false;
+  if (prev.searchTerm           !== next.searchTerm)           return false;
+  if (prev.visitedNodes         !== next.visitedNodes)         return false;
+  if (prev.disableSimulation    !== next.disableSimulation)    return false;
+  if (prev.disableInteractions  !== next.disableInteractions)  return false;
   const pk = prev.participants.map(p => p.peerId + '|' + p.role).join(',');
   const nk = next.participants.map(p => p.peerId + '|' + p.role).join(',');
   return pk === nk;
