@@ -1,0 +1,292 @@
+/* ═══════════════════════════════════════
+   CONSTELLATION DESIGN - STAR FIELD NETWORK
+   ══════════════════════════════════════════ */
+
+.mesh-graph-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(255, 215, 0, 0.08) 0%, rgba(255, 215, 0, 0) 34%),
+    radial-gradient(ellipse at bottom, #1a1a1a 0%, #090a0f 74%);
+}
+
+/* SpaceBackground wrapper */
+.mesh-graph-container > .space-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mesh-svg {
+  display: block;
+  position: relative;
+  z-index: 10;
+  /* Promote the entire SVG to its own compositor layer */
+  will-change: contents;
+}
+
+/* Panning cursor — toggled via classList.add('is-panning'), no React state needed */
+.mesh-svg.is-panning {
+  cursor: grabbing !important;
+}
+
+/* Constellation Lines */
+.constellation-lines {
+  pointer-events: none;
+}
+
+.constellation-lines line {
+  transition: stroke 0.3s ease, stroke-width 0.2s ease;
+}
+
+.constellation-lines line:hover {
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 2.5;
+}
+
+.constellation-lines line.line-highlight {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+}
+
+/* Constellation Node Group */
+.constellation-node {
+  cursor: grab;
+  pointer-events: all;
+  /* Promote each node to its own compositor layer — transforms skip layout */
+  will-change: transform;
+  /* Isolate layout/style recalc scope to this subtree */
+  contain: layout style;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.constellation-node:active {
+  cursor: grabbing;
+}
+
+.constellation-node.focused {
+  /* --node-ring-color is set via inline style on each node group */
+  filter: drop-shadow(0 0 24px var(--node-ring-color, rgba(255, 255, 255, 0.8))) brightness(1.4);
+}
+
+/* Node Halo — transition removed; position is updated programmatically */
+.node-halo {}
+
+/* Node Core */
+.node-core {}
+
+/* Host Ring */
+.host-ring {}
+
+/* Host Crown */
+.host-crown {}
+
+/* Node Initials */
+.node-initial {
+  pointer-events: none;
+}
+
+/* Name Label */
+.name-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Host (Special Styling) */
+.node-host {
+  z-index: 100;
+}
+
+.node-host .node-halo {
+  animation: host-pulse 3s ease-in-out infinite;
+  stroke: #FFD700;
+  stroke-width: 4;
+  transform-origin: center;
+  transform-box: fill-box;
+  opacity: 0.72;
+}
+
+.node-host .node-core {
+  opacity: 0.98;
+}
+
+.host-sun-core {
+  filter: drop-shadow(0 0 28px rgba(255, 215, 0, 0.92)) drop-shadow(0 0 64px rgba(255, 165, 0, 0.62));
+}
+
+@keyframes host-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.62;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* ── Hover tooltip ────────────────────────────────────────────── */
+.mesh-tooltip {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 14, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 7px 13px 6px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  animation: tooltip-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.mesh-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 5px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  background: rgba(255, 255, 255, 0.1);
+}
+@keyframes tooltip-pop {
+  from { opacity: 0; transform: translateX(-50%) scale(0.88) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1)    translateY(0);   }
+}
+.mesh-tooltip-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f5f5f5;
+  letter-spacing: -0.01em;
+}
+.mesh-tooltip-role {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* Ring tier guides — subtle concentric orbit boundaries */
+.ring-guide {
+  animation: ring-guide-pulse 8s ease-in-out infinite;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+@keyframes ring-guide-pulse {
+  0%, 100% { opacity: 0.55; stroke-dashoffset: 0;   }
+  50%       { opacity: 1;    stroke-dashoffset: -36; }
+}
+
+/* Role-based node colors */
+.node-speaker .node-halo {
+  stroke: #3B82F6;
+}
+
+.node-speaker .node-core {
+  stroke: #3B82F6;
+}
+
+.node-organizer .node-halo {
+  stroke: #8B5CF6;
+}
+
+.node-organizer .node-core {
+  stroke: #8B5CF6;
+}
+
+.node-attendee .node-halo {
+  stroke: #14B8A6;
+}
+
+.node-attendee .node-core {
+  stroke: #14B8A6;
+}
+
+/* Zoom controls */
+.mesh-zoom-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.zoom-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: background 0.2s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.zoom-btn:active {
+  transform: scale(0.95);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .constellation-node {
+    transform: scale(0.9);
+  }
+
+  .node-host .node-core {
+    r: 28;
+  }
+
+  .node-host .node-halo {
+    r: 34;
+  }
+
+  .node-host .host-crown {
+    transform: scale(0.9);
+  }
+
+  .name-label {
+    font-size: 9px;
+  }
+
+  .mesh-zoom-controls {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .zoom-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+}

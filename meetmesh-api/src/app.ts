@@ -1,10 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { createServer } from "http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { setupSocketIO } from "./routes/meetings";
 
 const app: Express = express();
 
@@ -33,8 +31,4 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-const server = createServer(app);
-setupSocketIO(server);
-
-export { server };
 export default app;
