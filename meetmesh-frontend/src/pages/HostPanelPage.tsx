@@ -131,11 +131,16 @@ export default function HostPanelPage() {
   const kick       = (peerId: string) => client.kickParticipant(code, peerId);
   const changeRole = (peerId: string, role: string) => client.changeRole(code, peerId, role);
   const close      = () => setShowCloseConfirm(true);
-  const confirmClose = () => {
-    client.closeMeeting(code);
-    showSuccess('Meeting ended');
-    setShowCloseConfirm(false);
-    navigate('/');
+  const confirmClose = async () => {
+    try {
+      await client.closeMeeting(code);
+      showSuccess('Meeting ended');
+    } catch (err) {
+      console.error('Failed to end meeting:', err);
+    } finally {
+      setShowCloseConfirm(false);
+      navigate('/');
+    }
   };
 
   const selectedParticipant = selectedNodeId ? state.room.participants[selectedNodeId] : null;
