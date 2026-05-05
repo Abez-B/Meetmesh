@@ -65,7 +65,6 @@ const DRIFT_AMP    = 0.06;  // px/frame — per-node sinusoidal breathing (~1 px
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 3;
-const TWO_PI   = Math.PI * 2;
 
 function NodeLabel({ name, y, color }: { name: string; y: number; color: string }) {
   const maxChars = 14;
@@ -101,10 +100,9 @@ function MeshGraphInner({
   const { room } = useMeetingState();
   const hostPeerId = room?.hostPeerId;
 
-  // The actual physics source of truth
+  // Physics state
   const nodesRef     = useRef<GraphNode[]>([]);
-  
-  // React state mirroring the nodes for the render cycle
+  // React render state
   const [nodes, setNodes] = useState<GraphNode[]>([]);
 
   const transformRef = useRef({ x: 300, y: 300, k: 1 });
@@ -118,7 +116,6 @@ function MeshGraphInner({
     name: string; role: string; color: string; x: number; y: number;
   } | null>(null);
 
-  // ── Transform ──────────────────────────────────────────────────────────────
   const applyTransform = useCallback((t: { x: number; y: number; k: number }) => {
     gRef.current?.setAttribute(
       'transform',
@@ -127,10 +124,9 @@ function MeshGraphInner({
     transformRef.current = t;
   }, []);
 
-  // ── DOM flush (imperative, runs every animation frame) ─────────────────────
   const flushPositions = useCallback(() => {
-    const g    = gRef.current;
-    if (!g)    return;
+    const g = gRef.current;
+    if (!g) return;
     const currentNodes = nodesRef.current;
 
     for (const node of currentNodes) {
@@ -147,7 +143,10 @@ function MeshGraphInner({
     }
   }, []);
 
-  // ... (relaxStep remains mostly the same, ensuring it uses currentNodes)
+  const setHoveredNode = useCallback((nodeId: string | null) => {
+    hoveredIdRef.current = nodeId;
+  }, []);
+
   const relaxStep = useCallback((): number => {
     const currentNodes = nodesRef.current;
     if (currentNodes.length === 0) return 0;
@@ -157,7 +156,7 @@ function MeshGraphInner({
     let totalMov   = 0;
 
     const containerShort = Math.min(dimsRef.current.width, dimsRef.current.height);
-    const gs  = Math.max(0.28, Math.min(1.0, containerShort / 560));
+    const gs = Math.max(0.28, Math.min(1.0, containerShort / 560));
     const sBase    = RING_BASE    * gs;
     const sGap     = RING_GAP     * gs;
     const sMin     = MIN_DIST     * gs;
@@ -225,12 +224,11 @@ function MeshGraphInner({
       totalMov += Math.abs(dx) + Math.abs(dy);
     }
 
-    const host = currentNodes.find(n => n.role === 'Host');
-    if (host) { host.x = 0; host.y = 0; }
+    const hostNodeInPhysics = currentNodes.find(n => n.role === 'Host');
+    if (hostNodeInPhysics) { hostNodeInPhysics.x = 0; hostNodeInPhysics.y = 0; }
     return totalMov;
   }, []);
 
-  // ── Rebuild nodes when participants or visited changes ─────────────────────
   useEffect(() => {
     const valid = participants
       .filter(p => !p.peerId?.startsWith('present-'))
@@ -242,38 +240,37 @@ function MeshGraphInner({
         return a.displayName.localeCompare(b.displayName);
       });
 
-    // FIND HOST: Priority 1 = hostPeerId from room meta, Priority 2 = role string
-    let host = hostPeerId ? valid.find(p => p.peerId === hostPeerId) : null;
-    if (!host) {
-      host = valid.find(p => p.role?.toLowerCase() === 'host');
+    let hostParticipant = hostPeerId ? valid.find(p => p.peerId === hostPeerId) : null;
+    if (!hostParticipant) {
+      hostParticipant = valid.find(p => p.role?.toLowerCase() === 'host') || null;
     }
 
-    const nonHost = valid.filter(p => p !== host);
+    const nonHostParticipants = valid.filter(p => p !== hostParticipant);
     const prevById = new Map(nodesRef.current.map(n => [n.id, n]));
 
     const newNodes: GraphNode[] = [];
-    if (host) {
+    if (hostParticipant) {
       newNodes.push({
-        id: host.peerId, p: host,
+        id: hostParticipant.peerId, p: hostParticipant,
         x: 0, y: 0,
-        visited: visitedNodes.has(host.peerId),
-        role: 'Host', // Ensure styling is correct
-        photo: parseProfile(host.json)?.photo,
+        visited: visitedNodes.has(hostParticipant.peerId),
+        role: 'Host',
+        photo: parseProfile(hostParticipant.json)?.photo,
         ringIndex: 0, restDist: 0, ringCount: 0,
       });
     }
 
-    const ringData = nonHost.map((p, i) => {
+    const ringData = nonHostParticipants.map((p, i) => {
       const ringIndex  = Math.floor(i / RING_CAPACITY);
       const ringStart  = ringIndex * RING_CAPACITY;
-      const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHost.length);
+      const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHostParticipants.length);
       const ringCount  = ringEnd - ringStart;
       const restDist   = RING_BASE + ringIndex * RING_GAP;
       return { ringIndex, ringCount, restDist };
     });
 
-    nonHost.forEach((p, i) => {
-      const prev  = prevById.get(p.peerId);
+    nonHostParticipants.forEach((p, i) => {
+      const prev = prevById.get(p.peerId);
       const spawnJitter = i % 2 === 0 ? 1 : -1;
       const role = (p.role?.charAt(0).toUpperCase() + p.role?.slice(1).toLowerCase()) as Exclude<ParticipantRole, 'Host'>;
       
@@ -294,9 +291,8 @@ function MeshGraphInner({
     setRefreshKey(k => k + 1);
     relaxStep();
     flushPositions();
-  }, [participants, visitedNodes, relaxStep, flushPositions]);
+  }, [participants, visitedNodes, relaxStep, flushPositions, hostPeerId]);
 
-  // ── Animation loop ──────────────────────────────────────────────────────────
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     if (nodes.length === 0) return;
@@ -306,13 +302,6 @@ function MeshGraphInner({
     return () => cancelAnimationFrame(rafRef.current);
   }, [refreshKey, nodes.length, disableSimulation, relaxStep, flushPositions]);
 
-  // ... (rest of the component remains the same, but use 'nodes' state for rendering)
-  const hostNode     = nodes.find(n => n.role === 'Host');
-  const nonHostNodes = nodes.filter(n => n.role !== 'Host');
-
-  // ... (return statement using hostNode and nonHostNodes derived from state)
-
-  // ── Search highlight ───────────────────────────────────────────────────────
   useEffect(() => {
     const svgEl = svgRef.current;
     const clear = () => {
@@ -333,7 +322,6 @@ function MeshGraphInner({
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  // ── Resize observer ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -343,7 +331,6 @@ function MeshGraphInner({
       dimsRef.current = { width: w, height: h };
       svgRef.current?.setAttribute('viewBox', `0 0 ${w} ${h}`);
       applyTransform({ x: w / 2, y: h / 2, k: transformRef.current.k });
-      // Update containerScale so ring guides in React state stay in sync.
       const gs = Math.max(0.28, Math.min(1.0, Math.min(w, h) / 560));
       setContainerScale(gs);
       relaxStep(); flushPositions();
@@ -355,12 +342,11 @@ function MeshGraphInner({
     return () => { ro.disconnect(); cancelAnimationFrame(raf); };
   }, [applyTransform, relaxStep, flushPositions]);
 
-  // ── Zoom to fit ────────────────────────────────────────────────────────────
   const zoomToFit = useCallback((maxScale = ZOOM_MAX) => {
-    const nodes = nodesRef.current;
-    const dims  = dimsRef.current;
-    if (nodes.length === 0) return;
-    const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+    const currentNodes = nodesRef.current;
+    const dims = dimsRef.current;
+    if (currentNodes.length === 0) return;
+    const xs = currentNodes.map(n => n.x), ys = currentNodes.map(n => n.y);
     const nW = Math.max(...xs) - Math.min(...xs), nH = Math.max(...ys) - Math.min(...ys);
     if (nW === 0 || nH === 0) { applyTransform({ x: dims.width / 2, y: dims.height / 2, k: 1 }); return; }
     const pad   = dims.width >= 1100 ? 170 : 110;
@@ -373,8 +359,8 @@ function MeshGraphInner({
   }, [applyTransform]);
 
   useEffect(() => {
-    if (nodeCount > 0) { const t = setTimeout(() => zoomToFit(0.88), 150); return () => clearTimeout(t); }
-  }, [nodeCount, zoomToFit]);
+    if (nodes.length > 0) { const t = setTimeout(() => zoomToFit(0.88), 150); return () => clearTimeout(t); }
+  }, [nodes.length, zoomToFit]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'f' || e.key === 'F') zoomToFit(ZOOM_MAX); };
@@ -382,7 +368,6 @@ function MeshGraphInner({
     return () => window.removeEventListener('keydown', h);
   }, [zoomToFit]);
 
-  // ── Zoom / pan ─────────────────────────────────────────────────────────────
   const zoomIn  = useCallback((e?: React.PointerEvent | React.MouseEvent) => {
     e?.preventDefault(); e?.stopPropagation();
     applyTransform({ ...transformRef.current, k: Math.min(ZOOM_MAX, transformRef.current.k * 1.08) });
@@ -416,7 +401,6 @@ function MeshGraphInner({
     (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId);
   };
 
-  // ── Cursor tracking for repulsion (works on all pages, even disableInteractions) ──
   const handleCursorMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -429,11 +413,11 @@ function MeshGraphInner({
   };
   const handleCursorLeave = () => { mouseRef.current = null; };
 
-  const handleNodeClick = (node: GraphNode, event: React.MouseEvent) =>
+  const handleInnerNodeClick = (node: GraphNode, event: React.MouseEvent) =>
     onNodeClick(node.id, { x: event.clientX, y: event.clientY });
 
-  const hostNode    = nodesRef.current.find(n => n.role === 'Host');
-  const nonHostNodes = nodesRef.current.filter(n => n.role !== 'Host');
+  const hostNode     = nodes.find(n => n.role === 'Host');
+  const nonHostNodes = nodes.filter(n => n.role !== 'Host');
 
   return (
     <div ref={containerRef} className="mesh-graph-container mesh-graph-container--solar">
@@ -467,10 +451,7 @@ function MeshGraphInner({
             <clipPath id={hostPhotoClipId}><circle cx="0" cy="0" r="30" /></clipPath>
           </defs>
 
-          {/* ── Ring guides — faint concentric tier boundaries ──────── */}
           {(() => {
-            // Collect unique rings; restDist is the unscaled base radius, so
-            // multiply by containerScale to match the physics spring targets.
             const rings = Array.from(
               new Map(nonHostNodes.map(n => [n.ringIndex, n.restDist])).entries()
             ).sort(([a], [b]) => a - b);
@@ -494,7 +475,6 @@ function MeshGraphInner({
             ));
           })()}
 
-          {/* ── Host → node lines (all nodes) ─────────────────────────── */}
           <g className="constellation-lines">
             {nonHostNodes.map(node => (
               <line
@@ -508,13 +488,12 @@ function MeshGraphInner({
             ))}
           </g>
 
-          {/* ── Host node ─────────────────────────────────────────────── */}
           {hostNode && (
             <g
               data-node-id={hostNode.id}
               className="constellation-node node-host"
               transform="translate(0,0)"
-              onClick={e => handleNodeClick(hostNode, e)}
+              onClick={e => handleInnerNodeClick(hostNode, e)}
               style={{ cursor: 'pointer', '--node-ring-color': ROLE_THEME.Host.ring } as React.CSSProperties}
             >
               <circle className="node-halo" r="44" fill="none" stroke={ROLE_THEME.Host.ring} strokeWidth="5" />
@@ -534,7 +513,6 @@ function MeshGraphInner({
             </g>
           )}
 
-          {/* ── Non-host nodes ────────────────────────────────────────── */}
           {nonHostNodes.map(node => {
             const theme = ROLE_THEME[node.role as ParticipantRole] ?? ROLE_THEME.Attendee;
             return (
@@ -551,7 +529,7 @@ function MeshGraphInner({
                   setHoveredNode(null);
                   setTooltip(null);
                 }}
-                onClick={e => handleNodeClick(node, e)}
+                onClick={e => handleInnerNodeClick(node, e)}
                 style={{ cursor: 'pointer', '--node-ring-color': theme.ring } as React.CSSProperties}
               >
                 <circle className="node-halo" r="33" fill="none" stroke={theme.ring}
