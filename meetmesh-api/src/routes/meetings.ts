@@ -301,10 +301,11 @@ export function setupSocketIO(server: HTTPServer) {
         meetings.delete(code);
 
         if (callback) callback();
-      } catch (error: any) {
-        logger.error({ error }, "Error closing meeting");
+        } catch (error: any) {
+        logger.error({ error }, "Error closing meeting:");
         if (callback) callback({ code: "ERROR", detail: error.message });
-      }
+        }
+        });
     });
 
     socket.on("heartbeat", (data: { meetingCode: string }, callback) => {
