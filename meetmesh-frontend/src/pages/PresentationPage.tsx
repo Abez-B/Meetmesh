@@ -7,9 +7,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import { MeshGraph } from '../components/MeshGraph';
 import { PresentationSkeleton } from '../components/SkeletonPage';
 import { TooltipButton } from '../components/TooltipButton';
-import { loadEventMeta }     from '../utils/hostEventMeta';
-import { v4 as uuid }        from 'uuid';
+import { Logo } from '../components/Logo';
+import { v4 as uuid } from 'uuid';
 import '../meetmesh-upgraded.css';
+
+const EMPTY_SET = new Set<string>();
 
 export default function PresentationPage() {
   const { code } = useParams<{ code?: string }>();
@@ -21,13 +23,18 @@ export default function PresentationPage() {
   const [error,        setError]        = useState<string | null>(null);
   const [isAttempting, setIsAttempting] = useState(false);
   const normalizedCode = code?.toUpperCase() ?? '';
+  
   const participants = useMemo(
     () => (state.room ? Object.values(state.room.participants) : []),
     [state.room?.participants]
   );
 
+  const handleNodeClick = useCallback(() => {}, []);
+
   const join = useCallback(async () => {
-    if (!normalizedCode || status !== 'connected' || state.phase !== 'idle' || isAttempting) return;
+    const isInWrongRoom = state.room && state.room.meetingCode !== normalizedCode;
+    if (!normalizedCode || status !== 'connected' || isAttempting) return;
+    if (state.phase !== 'idle' && !isInWrongRoom) return;
 
     try {
       setError(null);
@@ -39,7 +46,7 @@ export default function PresentationPage() {
     } finally {
       setIsAttempting(false);
     }
-  }, [normalizedCode, client, status, state.phase, isAttempting]);
+  }, [normalizedCode, client, status, state.phase, state.room?.meetingCode, isAttempting]);
 
   useEffect(() => {
     if (status === 'disconnected') {
@@ -65,13 +72,14 @@ export default function PresentationPage() {
 
   if (state.phase === 'ended') {
     return (
-      <div className="presentation-loading">
+      <div className="pp-root" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div>
-          <h2>Meeting Ended</h2>
-          <p>This presentation session has concluded.</p>
-          <div style={{ marginTop: 24 }}>
-            <TooltipButton text="Back to Home" onClick={() => navigate('/')} />
+          <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
+            <Logo size={48} />
           </div>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#f5f5f5', marginBottom: 12 }}>Meeting Ended</h2>
+          <p style={{ color: '#555', marginBottom: 32 }}>This presentation session has concluded.</p>
+          <TooltipButton text="Back to Home" onClick={() => navigate('/')} variant="primary" />
         </div>
       </div>
     );
@@ -79,12 +87,12 @@ export default function PresentationPage() {
 
   if (error) {
     return (
-      <div className="presentation-loading">
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
-          <h2 style={{ color: '#ff4d4d', marginBottom: 8 }}>Presentation Error</h2>
-          <p style={{ opacity: 0.7, marginBottom: 24, maxWidth: 400 }}>{error}</p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+      <div className="pp-root" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{ padding: 24 }}>
+          <div style={{ fontSize: '4rem', marginBottom: 20 }}>⚠️</div>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#ff4d4d', marginBottom: 12 }}>Presentation Error</h2>
+          <p style={{ color: '#555', marginBottom: 32, maxWidth: 400 }}>{error}</p>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
             <TooltipButton text="Retry Connection" onClick={join} variant="success" />
             <TooltipButton text="Go Home" onClick={() => navigate('/')} />
           </div>
@@ -97,13 +105,21 @@ export default function PresentationPage() {
     return (
       <div className="pp-root" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', padding: '40px 24px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: 20 }}>📺</div>
-          <h2 style={{ color: '#f5f5f5', marginBottom: 12, fontFamily: 'JetBrains Mono, monospace' }}>Screen Linked Successfully</h2>
-          <p style={{ maxWidth: 450, margin: '0 auto', color: '#555', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'center' }}>
+            <div className="pp-rings-large">
+               <div className="pp-ring-large" />
+               <div className="pp-ring-large" />
+               <div className="pp-ring-large" />
+               <div style={{ fontSize: '4rem', position: 'relative', zIndex: 2 }}>📺</div>
+            </div>
+          </div>
+          <h2 style={{ color: '#f5f5f5', marginBottom: 16, fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.02em' }}>Screen Linked Successfully</h2>
+          <p style={{ maxWidth: 480, margin: '0 auto 32px', color: '#666', fontSize: '0.95rem', lineHeight: 1.6 }}>
             To begin the presentation, the Host must <strong style={{ color: '#d4d4d4' }}>Admit</strong> the "Presentation View"
             from their dashboard.
           </p>
-          <div style={{ marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 18px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 100, fontSize: 11, color: '#666', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>
+          <div className="pp-event-kicker" style={{ margin: 0 }}>
+            <div className="pp-live-dot" />
             Waiting for admission...
           </div>
         </div>
@@ -111,19 +127,19 @@ export default function PresentationPage() {
     );
   }
 
-  if (!state.room || !normalizedCode) {
+  if (!state.room || state.room.meetingCode !== normalizedCode) {
     return <PresentationSkeleton />;
   }
 
-  const joinUrl   = `${window.location.origin}/join/${normalizedCode}`;
-  const eventMeta = loadEventMeta(normalizedCode);
+  const joinUrl = `${window.location.origin}/join/${normalizedCode}`;
+  const displayUrl = `${window.location.host}/join/${normalizedCode}`;
 
   return (
     <div className="pp-root">
       <div className="pp-left">
         <div>
           <div className="pp-brand">
-            <div className="pp-brand-mark">MM</div>
+            <Logo size={28} />
             <span className="pp-brand-name">MeetMesh</span>
           </div>
 
@@ -133,8 +149,8 @@ export default function PresentationPage() {
           </div>
 
           <h1 className="pp-title">{state.room.eventName}</h1>
-          {eventMeta?.subtitle && (
-            <p className="pp-subtitle">{eventMeta.subtitle}</p>
+          {state.room.subtitle && (
+            <p className="pp-subtitle">{state.room.subtitle}</p>
           )}
 
           <div className="pp-count">
@@ -159,9 +175,9 @@ export default function PresentationPage() {
               </div>
               <div className="pp-qr-info">
                 <span className="pp-code">{normalizedCode}</span>
-                <div className="pp-join-link">meetmesh.app/join/{normalizedCode}</div>
-                {eventMeta?.description && (
-                  <p className="pp-description">{eventMeta.description}</p>
+                <div className="pp-join-link">{displayUrl}</div>
+                {state.room.description && (
+                  <p className="pp-description">{state.room.description}</p>
                 )}
               </div>
             </div>
@@ -179,9 +195,9 @@ export default function PresentationPage() {
 
         <MeshGraph
           participants={participants}
-          visitedNodes={new Set()}
+          visitedNodes={EMPTY_SET}
           disableInteractions
-          onNodeClick={() => {}}
+          onNodeClick={handleNodeClick}
         />
       </div>
     </div>

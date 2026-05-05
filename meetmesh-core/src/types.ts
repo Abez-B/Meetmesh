@@ -38,6 +38,8 @@ export function parseProfile(json: string): ParticipantProfile | null {
 export interface MeetingRoom {
   meetingCode:  string;
   eventName:    string;
+  subtitle?:    string;
+  description?: string;
   hostPeerId:   string;
   startedAt:    string;
   waitingRoomEnabled: boolean;

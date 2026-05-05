@@ -67,9 +67,9 @@ export class MeshClient {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  async createMeeting(eventName: string, peerId: string, profileJson = '{}'): Promise<void> {
+  async createMeeting(eventName: string, peerId: string, profileJson = '{}', subtitle?: string, description?: string): Promise<void> {
     this._machine.setSelfPeerId(peerId);
-    await this._invoke('create_meeting', { eventName, peerId, profileJson });
+    await this._invoke('create_meeting', { eventName, peerId, profileJson, subtitle, description });
   }
 
   async joinMeeting(meetingCode: string, displayName: string, peerId: string, profileJson = '{}'): Promise<void> {

@@ -3,7 +3,8 @@ import { MeshClient } from 'meetmesh-core';
 import { MockMeshClient } from '../mock/MockMeshClient';
 
 const IS_MOCK = import.meta.env.VITE_MOCK_MODE === 'true';
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string) ?? 'http://localhost:5000/hub';
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string) ?? 
+  (window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin);
 
 let _client: MeshClient | null = null;
 

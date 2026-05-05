@@ -9,7 +9,7 @@ export default defineConfig({
       'meetmesh-core': resolve(__dirname, '../meetmesh-core/src/index.ts'),
     },
   },
-  base: process.env.BASE_PATH || '/meetmesh',
+  base: process.env.BASE_PATH || '/',
   server: {
     port:         parseInt(process.env.PORT || '5173'),
     host:         '0.0.0.0',

@@ -29,16 +29,17 @@ interface GraphNode {
   ringCount: number;
 }
 
-type ParticipantRole = 'Host' | 'Organizer' | 'Speaker' | 'Attendee';
+type ParticipantRole = 'Host' | 'Organizer' | 'Speaker' | 'Attendee' | 'Presentation';
 
 const ROLE_THEME = {
   Host:      { ring: '#FFD700', text: '#FFD700' },
   Organizer: { ring: '#8B5CF6', text: '#A78BFA' },
   Speaker:   { ring: '#3B82F6', text: '#60A5FA' },
   Attendee:  { ring: '#14B8A6', text: '#5EEAD4' },
+  Presentation: { ring: '#666', text: '#666' },
 };
 const ROLE_PRIORITY: Record<ParticipantRole, number> = {
-  Host: 0, Organizer: 1, Speaker: 2, Attendee: 3,
+  Host: 0, Organizer: 1, Speaker: 2, Attendee: 3, Presentation: 4,
 };
 
 // ── Physics constants ─────────────────────────────────────────────────────────

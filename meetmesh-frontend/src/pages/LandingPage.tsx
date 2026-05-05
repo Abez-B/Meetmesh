@@ -103,7 +103,7 @@ export default function LandingPage() {
     sessionStorage.setItem('meetmesh_last_profile_json', profileJson);
 
     try {
-      await client.createMeeting(eventName.trim(), peerId, profileJson);
+      await client.createMeeting(eventName.trim(), peerId, profileJson, eventSubtitle.trim(), eventDescription.trim());
     } catch {
       setError('Failed to create meeting — is the server running?');
       setBusy(false);
