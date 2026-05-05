@@ -49,7 +49,8 @@ export default function JoinProfilePage() {
   }, [client]);
 
   const handleCapture     = (base64: string) => { setPhoto(base64); setStep(2); };
-  const handleSkipCapture = () => { setPhoto(undefined); setStep(2); };
+  const handleSkipCapture = () => { setPhoto('SKIP'); setStep(2); };
+  const handleRetake      = () => { setPhoto(undefined); setStep(1); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,11 +60,12 @@ export default function JoinProfilePage() {
 
     setBusy(true); setError('');
 
+    const photoToSave = photo === 'SKIP' ? undefined : photo;
     const profileJsonObj = {
       linkedIn:  linkedIn.trim(),
       github:    github.trim() || undefined,
       bio:       bio.trim() || undefined,
-      photo,
+      photo:     photoToSave,
     };
     const profileJson = JSON.stringify(profileJsonObj);
 
@@ -198,13 +200,21 @@ export default function JoinProfilePage() {
               </div>
 
               <form onSubmit={handleSubmit} className="jp-form">
-                {photo ? (
+                {photo && photo !== 'SKIP' ? (
                   <div className="jp-photo-preview">
                     <img src={photo} alt="Selfie" className="jp-photo-img" />
                     <div className="jp-photo-info">
                       <div className="jp-photo-name">Photo captured</div>
                     </div>
-                    <button type="button" className="jp-retake-btn" onClick={() => setStep(1)}>Retake</button>
+                    <button type="button" className="jp-retake-btn" onClick={handleRetake}>Retake</button>
+                  </div>
+                ) : photo === 'SKIP' ? (
+                  <div className="jp-photo-preview">
+                    <div className="jp-photo-placeholder">👤</div>
+                    <div className="jp-photo-info">
+                      <div className="jp-photo-name">Photo skipped</div>
+                    </div>
+                    <button type="button" className="jp-retake-btn" onClick={handleRetake}>Add photo</button>
                   </div>
                 ) : (
                   <div className="jp-photo-preview">
@@ -212,7 +222,7 @@ export default function JoinProfilePage() {
                     <div className="jp-photo-info">
                       <div className="jp-photo-name">No photo captured</div>
                     </div>
-                    <button type="button" className="jp-retake-btn" onClick={() => setStep(1)}>Add photo</button>
+                    <button type="button" className="jp-retake-btn" onClick={handleRetake}>Add photo</button>
                   </div>
                 )}
 
