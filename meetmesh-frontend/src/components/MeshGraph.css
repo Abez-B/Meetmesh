@@ -27,11 +27,13 @@
   display: block;
   position: relative;
   z-index: 10;
+  /* Prevent native scroll/zoom from interfering with custom pan/pinch */
+  touch-action: none;
   /* Promote the entire SVG to its own compositor layer */
   will-change: contents;
 }
 
-/* Panning cursor — toggled via classList.add('is-panning'), no React state needed */
+/* Panning cursor */
 .mesh-svg.is-panning {
   cursor: grabbing !important;
 }
@@ -60,9 +62,7 @@
 .constellation-node {
   cursor: grab;
   pointer-events: all;
-  /* Promote each node to its own compositor layer — transforms skip layout */
   will-change: transform;
-  /* Isolate layout/style recalc scope to this subtree */
   contain: layout style;
   transition: filter 0.2s ease, opacity 0.2s ease;
 }
@@ -72,34 +72,25 @@
 }
 
 .constellation-node.focused {
-  /* --node-ring-color is set via inline style on each node group */
   filter: drop-shadow(0 0 24px var(--node-ring-color, rgba(255, 255, 255, 0.8))) brightness(1.4);
 }
 
-/* Node Halo — transition removed; position is updated programmatically */
+/* Node elements */
 .node-halo {}
-
-/* Node Core */
 .node-core {}
-
-/* Host Ring */
 .host-ring {}
-
-/* Host Crown */
 .host-crown {}
 
-/* Node Initials */
 .node-initial {
   pointer-events: none;
 }
 
-/* Name Label */
 .name-label {
   pointer-events: none;
   user-select: none;
 }
 
-/* Host (Special Styling) */
+/* Host */
 .node-host {
   z-index: 100;
 }
@@ -132,7 +123,7 @@
   }
 }
 
-/* ── Hover tooltip ────────────────────────────────────────────── */
+/* Hover tooltip */
 .mesh-tooltip {
   position: fixed;
   z-index: 1200;
@@ -183,7 +174,7 @@
   opacity: 0.85;
 }
 
-/* Ring tier guides — subtle concentric orbit boundaries */
+/* Ring tier guides */
 .ring-guide {
   animation: ring-guide-pulse 8s ease-in-out infinite;
   transform-origin: 0 0;
@@ -196,31 +187,14 @@
 }
 
 /* Role-based node colors */
-.node-speaker .node-halo {
-  stroke: #3B82F6;
-}
+.node-speaker .node-halo  { stroke: #3B82F6; }
+.node-speaker .node-core  { stroke: #3B82F6; }
+.node-organizer .node-halo{ stroke: #8B5CF6; }
+.node-organizer .node-core{ stroke: #8B5CF6; }
+.node-attendee .node-halo { stroke: #14B8A6; }
+.node-attendee .node-core { stroke: #14B8A6; }
 
-.node-speaker .node-core {
-  stroke: #3B82F6;
-}
-
-.node-organizer .node-halo {
-  stroke: #8B5CF6;
-}
-
-.node-organizer .node-core {
-  stroke: #8B5CF6;
-}
-
-.node-attendee .node-halo {
-  stroke: #14B8A6;
-}
-
-.node-attendee .node-core {
-  stroke: #14B8A6;
-}
-
-/* Zoom controls */
+/* ── Zoom controls ─────────────────────────────────────────────────────────── */
 .mesh-zoom-controls {
   position: absolute;
   bottom: 20px;
@@ -235,58 +209,65 @@
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 24px;
+  border-radius: 10px;
+  background: rgba(20, 20, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #d4d4d4;
+  font-size: 22px;
   font-weight: 600;
   cursor: pointer;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  transition: background 0.2s, transform 0.1s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.18s, transform 0.1s, border-color 0.18s;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  /* Minimum touch target */
+  min-width: 40px;
+  min-height: 40px;
 }
 
 .zoom-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(40, 40, 55, 0.92);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
 }
 
 .zoom-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
 
-/* Mobile Responsive */
+.zoom-btn--fit {
+  font-size: 18px;
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+.zoom-btn--fit:hover {
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #818cf8;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .constellation-node {
-    transform: scale(0.9);
-  }
-
-  .node-host .node-core {
-    r: 28;
-  }
-
-  .node-host .node-halo {
-    r: 34;
-  }
-
-  .node-host .host-crown {
-    transform: scale(0.9);
-  }
-
-  .name-label {
-    font-size: 9px;
-  }
-
+  /* Move controls to bottom-left on mobile so they don't overlap the mobile nav */
   .mesh-zoom-controls {
-    bottom: 16px;
-    right: 16px;
+    bottom: 80px; /* above mobile nav bar */
+    right: 12px;
+    gap: 6px;
   }
 
   .zoom-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 20px;
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+    border-radius: 12px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  /* Tooltip hidden on touch (no hover), keep it available but invisible */
+  .mesh-tooltip {
+    display: none;
   }
 }

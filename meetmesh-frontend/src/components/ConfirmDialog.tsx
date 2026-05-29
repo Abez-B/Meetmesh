@@ -50,8 +50,11 @@ export function ConfirmDialog({
     },
     info: {
       border: '1px solid rgba(255, 255, 255, 0.1)',
-      },
-      };
+      confirmBg: 'rgba(255,255,255,0.12)',
+      confirmText: '#f5f5f5',
+    },
+  };
+
 
       return (
       <AnimatePresence>

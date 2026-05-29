@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMeetingState } from '../hooks/useMeetingState';
@@ -11,6 +11,7 @@ import { ParticipantGrid } from '../components/ParticipantGrid';
 import { Logo } from '../components/Logo';
 import { ChatPanel } from '../components/ChatPanel';
 import { ReactionBar, ReactionFloats } from '../components/ReactionLayer';
+import { reactionStore } from '../mock/reactionStore';
 import { parseProfile } from 'meetmesh-core';
 import '../meetmesh-upgraded.css';
 import '../chat.css';
@@ -27,6 +28,14 @@ export default function MeetingRoomPage() {
   const [showSidebar, setSidebarOpen] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [dmPeerId, setDmPeerId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const fitRef = useRef<(() => void) | null>(null);
+
+  const checkMobile = useCallback(() => setIsMobile(window.innerWidth < 768), []);
+  useEffect(() => {
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [checkMobile]);
 
   useEffect(() => {
     if (state.phase === 'ended') { navigate('/'); return; }
@@ -43,6 +52,23 @@ export default function MeetingRoomPage() {
       }
     }
   }, [state.phase, client.connectionStatus, navigate, state.room?.meetingCode, client]);
+
+  useEffect(() => {
+    const handleReaction = (payload: { peerId: string; displayName: string; emoji: string; avatarUrl?: string }) => {
+      if (payload.peerId === state.selfPeerId) return;
+      reactionStore.fire({
+        peerId: payload.peerId,
+        displayName: payload.displayName,
+        emoji: payload.emoji,
+        avatarUrl: payload.avatarUrl,
+      });
+    };
+
+    client.on('ReactionReceived', handleReaction);
+    return () => {
+      client.off('ReactionReceived', handleReaction);
+    };
+  }, [client, state.selfPeerId]);
 
   // Hoist useMemo above the early return — hooks must be called unconditionally.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,7 +137,7 @@ export default function MeetingRoomPage() {
       </div>
 
       <div className="mr-content">
-        <div className="mr-stage" style={{ marginRight: (showSidebar ? 300 : 0) + (showChat ? 320 : 0) }}>
+        <div className="mr-stage" style={{ marginRight: isMobile ? 0 : ((showSidebar ? 300 : 0) + (showChat ? 320 : 0)) }}>
           <MeshGraph
             participants={participantsList}
             visitedNodes={visitedNodes}
@@ -193,12 +219,12 @@ export default function MeetingRoomPage() {
           <span className="mr-mobile-nav-label">People</span>
         </button>
         <button
-          className="mr-mobile-nav-btn mr-mobile-nav-btn--react"
-          aria-label="Reactions"
-          style={{ pointerEvents: 'none', opacity: 0.4 }}
+          className="mr-mobile-nav-btn mr-mobile-nav-btn--fit"
+          aria-label="Fit all nodes"
+          onClick={() => fitRef.current?.()}
         >
-          <span className="mr-mobile-nav-icon">🎉</span>
-          <span className="mr-mobile-nav-label">React ↑</span>
+          <span className="mr-mobile-nav-icon">⊕</span>
+          <span className="mr-mobile-nav-label">Fit</span>
         </button>
         <button
           className="mr-mobile-nav-btn mr-mobile-nav-btn--danger"
@@ -215,6 +241,11 @@ export default function MeetingRoomPage() {
         selfName={selfName}
         selfAvatar={selfAvatar}
         participants={participantsList}
+        onFire={(emoji) => {
+          if (state.room?.meetingCode) {
+            client.sendReaction(state.room.meetingCode, emoji);
+          }
+        }}
       />
 
       <AnimatePresence>

@@ -29,6 +29,18 @@ export default function PresentationPage() {
     [state.room?.participants]
   );
 
+  // Debug: Log state when room changes
+  useEffect(() => {
+    if (state.room) {
+      console.log('[PresentationPage] Room state:', {
+        meetingCode: state.room.meetingCode,
+        hostPeerId: state.room.hostPeerId,
+        participantCount: Object.keys(state.room.participants).length,
+        participants: state.room.participants
+      });
+    }
+  }, [state.room]);
+
   const handleNodeClick = useCallback(() => {}, []);
 
   const join = useCallback(async () => {
@@ -53,6 +65,17 @@ export default function PresentationPage() {
       client.connect().catch(() => setError('Connection failed. Is the server running?'));
     }
   }, [client, status]);
+
+  // Retry join if connection is established but we're not in a room yet
+  useEffect(() => {
+    if (status === 'connected' && !state.room && !isAttempting && normalizedCode) {
+      // Small delay to allow reconnection logic to settle
+      const timer = setTimeout(() => {
+        join();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, state.room, isAttempting, normalizedCode, join]);
 
   useEffect(() => {
     join();

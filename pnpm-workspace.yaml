@@ -35,7 +35,9 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 packages:
-  - artifacts/*
+  - meetmesh-api
+  - meetmesh-core
+  - meetmesh-frontend
   - lib/*
   - lib/integrations/*
   - scripts

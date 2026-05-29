@@ -216,6 +216,7 @@ export class MockMeshClient {
   async heartbeat(_meetingCode: string): Promise<void> {
     this._patch({ latencyMs: Math.round(8 + Math.random() * 20) });
   }
+  async sendReaction(_meetingCode: string, _emoji: string): Promise<void> { }
 
   on(event: string, handler: EventHandler): void {
     if (!this._handlers.has(event)) this._handlers.set(event, new Set());

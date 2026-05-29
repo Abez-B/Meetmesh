@@ -12,6 +12,7 @@ interface Participant {
   isAdmitted: boolean;
   joinedAt: string;
   json: string;
+  lastHeartbeat: number;
 }
 
 interface Meeting {
@@ -23,11 +24,47 @@ interface Meeting {
   participants: Map<string, Participant>;
   waitingRoom: boolean;
   createdAt: number;
+  /** Timer handle for auto-expiry when all participants leave */
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
-const meetings = new Map<string, Meeting>();
-const peerToMeeting = new Map<string, string>();
+const meetings        = new Map<string, Meeting>();
+const peerToMeeting   = new Map<string, string>();
 const peerToParticipant = new Map<string, Participant>();
+
+// ── Rate limiting — joins per IP ───────────────────────────────────────────
+const joinRateMap = new Map<string, { count: number; resetAt: number }>();
+const JOIN_RATE_LIMIT  = 50;   // max joins
+const JOIN_RATE_WINDOW = 10_000; // per 10 seconds
+
+function checkJoinRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = joinRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    joinRateMap.set(ip, { count: 1, resetAt: now + JOIN_RATE_WINDOW });
+    return true;
+  }
+  if (entry.count >= JOIN_RATE_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
+// ── Heartbeat config ───────────────────────────────────────────────────────
+const HEARTBEAT_TIMEOUT_MS = 45_000; // kick after 45s without heartbeat
+
+// ── Meeting expiry ─────────────────────────────────────────────────────────
+const EMPTY_MEETING_TTL_MS = 30 * 60_000; // 30 minutes
+
+function scheduleExpiryIfEmpty(meeting: Meeting, io: Server) {
+  if (meeting.participants.size > 0) return;
+  clearTimeout(meeting.expiryTimer);
+  meeting.expiryTimer = setTimeout(() => {
+    if (meeting.participants.size === 0) {
+      meetings.delete(meeting.code);
+      logger.info({ code: meeting.code }, "Auto-expired empty meeting");
+    }
+  }, EMPTY_MEETING_TTL_MS);
+}
 
 function generateCode(): string {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -36,43 +73,49 @@ function generateCode(): string {
 export function setupSocketIO(server: HTTPServer) {
   const io = new Server(server, {
     cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
+      origin: process.env["ALLOWED_ORIGIN"] || "*",
+      methods: ["GET", "POST"],
+    },
   });
 
-  const cleanUpParticipant = (peerId: string) => {
-    const meetingCode = peerToMeeting.get(peerId);
-    if (meetingCode) {
-      const meeting = meetings.get(meetingCode);
-      if (meeting) {
-        meeting.participants.delete(peerId);
-        Array.from(io.sockets.sockets.values()).forEach((s: Socket) => {
-          if (s.rooms.has(meetingCode) && s.data?.peerId === peerId) {
-            s.leave(meetingCode);
+  // ── Heartbeat watchdog (runs every 15s) ──────────────────────────────────
+  const heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [code, meeting] of meetings) {
+      for (const [peerId, participant] of meeting.participants) {
+        if (now - participant.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+          logger.info({ peerId, code }, "Kicking participant: heartbeat timeout");
+          const targetSocket = io.sockets.sockets.get(participant.connectionId);
+          if (targetSocket) {
+            targetSocket.emit("Kicked", { meetingCode: code, reason: "heartbeat_timeout" });
+            targetSocket.leave(code);
           }
-        });
-        
-        if (meeting.participants.size === 0) {
-          meetings.delete(meetingCode);
+          meeting.participants.delete(peerId);
+          peerToMeeting.delete(peerId);
+          peerToParticipant.delete(peerId);
+          io.to(code).emit("ParticipantLeft", { peerId });
         }
       }
-      peerToMeeting.delete(peerId);
-      peerToParticipant.delete(peerId);
+      scheduleExpiryIfEmpty(meeting, io);
     }
-  };
+  }, 15_000);
 
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Client connected");
+    const remoteIp = (socket.handshake.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+      ?? socket.handshake.address;
 
-    socket.on("create_meeting", async (data: { eventName: string; peerId: string; profileJson?: string; subtitle?: string; description?: string }, callback) => {
+    socket.on("create_meeting", async (
+      data: { eventName: string; peerId: string; profileJson?: string; subtitle?: string; description?: string },
+      callback?: (err?: any) => void,
+    ) => {
       try {
         const code = generateCode();
         const hostSecret = uuidv4();
-        
+
         let displayName = "Host";
         try {
-          const profile = JSON.parse(data.profileJson || '{}');
+          const profile = JSON.parse(data.profileJson || "{}");
           if (profile.name) displayName = profile.name;
         } catch {}
 
@@ -84,17 +127,18 @@ export function setupSocketIO(server: HTTPServer) {
           hostPeerId: data.peerId,
           participants: new Map(),
           waitingRoom: false,
-          createdAt: Date.now()
+          createdAt: Date.now(),
         };
 
         const host: Participant = {
           peerId: data.peerId,
           displayName,
           connectionId: socket.id,
-          role: 'Host',
+          role: "Host",
           isAdmitted: true,
           joinedAt: new Date().toISOString(),
-          json: data.profileJson || '{}'
+          json: data.profileJson || "{}",
+          lastHeartbeat: Date.now(),
         };
 
         meeting.participants.set(data.peerId, host);
@@ -109,12 +153,8 @@ export function setupSocketIO(server: HTTPServer) {
         socket.emit("FullState", {
           meetingCode: code,
           eventName: data.eventName,
-          subtitle: data.subtitle,
-          description: data.description,
           hostPeerId: data.peerId,
-          startedAt: new Date(meeting.createdAt).toISOString(),
-          waitingRoomEnabled: meeting.waitingRoom,
-          participants: { [data.peerId]: host }
+          participants: { [data.peerId]: host },
         });
 
         if (callback) callback();
@@ -124,8 +164,18 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("join_meeting", (data: { meetingCode: string; displayName: string; peerId: string; profileJson?: string }, callback) => {
+    socket.on("join_meeting", (
+      data: { meetingCode: string; displayName: string; peerId: string; profileJson?: string },
+      callback?: (err?: any) => void,
+    ) => {
       try {
+        // Rate limit
+        if (!checkJoinRateLimit(remoteIp)) {
+          socket.emit("Error", { code: "RATE_LIMITED", detail: "Too many join requests. Please wait." });
+          if (callback) callback({ code: "RATE_LIMITED" });
+          return;
+        }
+
         const code = data.meetingCode.toUpperCase();
         const meeting = meetings.get(code);
 
@@ -135,18 +185,50 @@ export function setupSocketIO(server: HTTPServer) {
           return;
         }
 
-        // Check if already in a DIFFERENT meeting
+        // ── Reconnect deduplication ───────────────────────────────────────
+        // If the peer already exists in this meeting, just update their
+        // connectionId and socket data rather than creating a duplicate entry.
+        const existingParticipant = meeting.participants.get(data.peerId);
+        if (existingParticipant) {
+          existingParticipant.connectionId = socket.id;
+          existingParticipant.lastHeartbeat = Date.now();
+          peerToParticipant.set(data.peerId, existingParticipant);
+
+          socket.join(code);
+          socket.data = { meetingCode: code, peerId: data.peerId };
+
+          // Send full state to reconnecting participant
+          socket.emit("FullState", {
+            meetingCode: code,
+            eventName: meeting.eventName,
+            hostPeerId: meeting.hostPeerId,
+            participants: Object.fromEntries(meeting.participants),
+          });
+          // Notify others that this peer is back (reuse ParticipantJoined)
+          socket.to(code).emit("ParticipantJoined", existingParticipant);
+
+          if (callback) callback();
+          return;
+        }
+
+        // Check if in a DIFFERENT meeting — clean up first
         const existingMeeting = peerToMeeting.get(data.peerId);
         if (existingMeeting && existingMeeting !== code) {
           socket.leave(existingMeeting);
-          cleanUpParticipant(data.peerId);
+          const prevMeeting = meetings.get(existingMeeting);
+          if (prevMeeting) {
+            prevMeeting.participants.delete(data.peerId);
+            scheduleExpiryIfEmpty(prevMeeting, io);
+          }
+          peerToMeeting.delete(data.peerId);
+          peerToParticipant.delete(data.peerId);
         }
 
-        let role: Participant['role'] = 'Attendee';
-        if (data.displayName.toLowerCase().includes('present')) {
-          role = 'Presentation';
+        let role: Participant["role"] = "Attendee";
+        if (data.displayName.toLowerCase().includes("present")) {
+          role = "Presentation";
         } else if (data.peerId === meeting.hostPeerId) {
-          role = 'Host';
+          role = "Host";
         }
 
         const participant: Participant = {
@@ -156,7 +238,8 @@ export function setupSocketIO(server: HTTPServer) {
           role,
           isAdmitted: true,
           joinedAt: new Date().toISOString(),
-          json: data.profileJson || '{}'
+          json: data.profileJson || "{}",
+          lastHeartbeat: Date.now(),
         };
 
         meeting.participants.set(data.peerId, participant);
@@ -166,19 +249,13 @@ export function setupSocketIO(server: HTTPServer) {
         socket.join(code);
         socket.data = { meetingCode: code, peerId: data.peerId };
 
-        // Send full state to joining participant
         socket.emit("FullState", {
           meetingCode: code,
           eventName: meeting.eventName,
-          subtitle: meeting.subtitle,
-          description: meeting.description,
           hostPeerId: meeting.hostPeerId,
-          startedAt: new Date(meeting.createdAt).toISOString(),
-          waitingRoomEnabled: meeting.waitingRoom,
-          participants: Object.fromEntries(meeting.participants)
+          participants: Object.fromEntries(meeting.participants),
         });
 
-        // Notify others
         socket.to(code).emit("ParticipantJoined", participant);
 
         if (callback) callback();
@@ -188,16 +265,16 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("admit_participant", (data: { meetingCode: string; peerId: string }, callback) => {
-      // TODO: Implement waiting room admission
+    socket.on("admit_participant", (data: { meetingCode: string; peerId: string }, callback?: () => void) => {
+      // TODO: waiting room admission
       if (callback) callback();
     });
 
-    socket.on("kick_participant", (data: { meetingCode: string; peerId: string }, callback) => {
+    socket.on("kick_participant", (data: { meetingCode: string; peerId: string }, callback?: (err?: any) => void) => {
       try {
         const code = data.meetingCode.toUpperCase();
         const meeting = meetings.get(code);
-        
+
         if (!meeting || !meeting.participants.has(data.peerId)) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Participant not found" });
           return;
@@ -210,12 +287,11 @@ export function setupSocketIO(server: HTTPServer) {
             targetSocket.emit("Kicked", { meetingCode: code });
             targetSocket.leave(code);
           }
-          
           meeting.participants.delete(data.peerId);
           peerToMeeting.delete(data.peerId);
           peerToParticipant.delete(data.peerId);
-          
           io.to(code).emit("ParticipantLeft", { peerId: data.peerId });
+          scheduleExpiryIfEmpty(meeting, io);
         }
 
         if (callback) callback();
@@ -225,11 +301,11 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("change_role", (data: { meetingCode: string; peerId: string; newRole: string }, callback) => {
+    socket.on("change_role", (data: { meetingCode: string; peerId: string; newRole: string }, callback?: (err?: any) => void) => {
       try {
         const code = data.meetingCode.toUpperCase();
         const meeting = meetings.get(code);
-        
+
         if (!meeting || !meeting.participants.has(data.peerId)) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Participant not found" });
           return;
@@ -248,11 +324,11 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("toggle_waiting_room", (data: { meetingCode: string; isEnabled: boolean }, callback) => {
+    socket.on("toggle_waiting_room", (data: { meetingCode: string; isEnabled: boolean }, callback?: (err?: any) => void) => {
       try {
         const code = data.meetingCode.toUpperCase();
         const meeting = meetings.get(code);
-        
+
         if (!meeting) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
           return;
@@ -268,8 +344,20 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("update_metadata", (data: { meetingCode: string; json: string }, callback) => {
-      // TODO: Implement metadata updates
+    socket.on("update_metadata", (data: { meetingCode: string; json: string }, callback?: () => void) => {
+      // TODO: implement metadata updates
+      if (callback) callback();
+    });
+
+    socket.on("heartbeat", (data: { meetingCode: string }, callback?: () => void) => {
+      // Update the participant's last-seen timestamp
+      const peerId = socket.data?.peerId;
+      if (peerId) {
+        const code = data?.meetingCode?.toUpperCase() ?? socket.data?.meetingCode;
+        const meeting = meetings.get(code);
+        const participant = meeting?.participants.get(peerId);
+        if (participant) participant.lastHeartbeat = Date.now();
+      }
       if (callback) callback();
     });
 
@@ -277,23 +365,19 @@ export function setupSocketIO(server: HTTPServer) {
       try {
         const code = data.meetingCode.toUpperCase();
         const meeting = meetings.get(code);
-        
+
         if (!meeting) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
           return;
         }
 
-        // Notify all participants
         io.to(code).emit("MeetingEnded");
-        
-        // Leave all sockets
+
         Array.from(io.sockets.sockets.values()).forEach((s: Socket) => {
-          if (s.rooms.has(code)) {
-            s.leave(code);
-          }
+          if (s.rooms.has(code)) s.leave(code);
         });
 
-        // Clean up
+        clearTimeout(meeting.expiryTimer);
         meeting.participants.forEach((participant) => {
           peerToMeeting.delete(participant.peerId);
           peerToParticipant.delete(participant.peerId);
@@ -301,20 +385,37 @@ export function setupSocketIO(server: HTTPServer) {
         meetings.delete(code);
 
         if (callback) callback();
-        } catch (error: any) {
+      } catch (error: any) {
         logger.error({ error }, "Error closing meeting:");
         if (callback) callback({ code: "ERROR", detail: error.message });
-        }
-        });
+      }
     });
 
-    socket.on("heartbeat", (data: { meetingCode: string }, callback) => {
-      if (callback) callback();
+    socket.on("send_reaction", (data: { meetingCode: string; emoji: string }) => {
+      const peerId = socket.data?.peerId;
+      const meetingCode = data.meetingCode?.toUpperCase() ?? socket.data?.meetingCode;
+      if (peerId && meetingCode) {
+        const meeting = meetings.get(meetingCode);
+        const participant = meeting?.participants.get(peerId);
+        if (participant) {
+          let photo = "";
+          try {
+            const profile = JSON.parse(participant.json || "{}");
+            photo = profile.photo || "";
+          } catch {}
+          io.to(meetingCode).emit("ReactionReceived", {
+            peerId,
+            displayName: participant.displayName,
+            emoji: data.emoji,
+            avatarUrl: photo,
+          });
+        }
+      }
     });
 
     socket.on("disconnect", () => {
       logger.info({ socketId: socket.id }, "Client disconnected");
-      
+
       const meetingCode = socket.data?.meetingCode;
       const peerId = socket.data?.peerId;
 
@@ -323,17 +424,23 @@ export function setupSocketIO(server: HTTPServer) {
         if (meeting) {
           meeting.participants.delete(peerId);
           io.to(meetingCode).emit("ParticipantLeft", { peerId });
-          
-          if (meeting.participants.size === 0) {
-            meetings.delete(meetingCode);
-          }
+          scheduleExpiryIfEmpty(meeting, io);
         }
-        
         peerToMeeting.delete(peerId);
         peerToParticipant.delete(peerId);
       }
     });
   });
+
+  // Clean up interval on server close
+  server.on("close", () => clearInterval(heartbeatInterval));
+}
+
+// ── Health endpoint data helper ───────────────────────────────────────────
+export function getStats() {
+  let totalParticipants = 0;
+  for (const m of meetings.values()) totalParticipants += m.participants.size;
+  return { meetings: meetings.size, participants: totalParticipants };
 }
 
 const router: IRouter = Router();

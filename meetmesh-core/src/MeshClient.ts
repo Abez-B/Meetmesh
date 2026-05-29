@@ -8,6 +8,7 @@ type EventMap = {
   RateLimited:             (method: string) => void;
   Error:                   (payload: { code: string; detail: string }) => void;
   Kicked:                  (payload: { meetingCode: string }) => void;
+  ReactionReceived:        (payload: { peerId: string; displayName: string; emoji: string; avatarUrl?: string }) => void;
 };
 
 export class MeshClient {
@@ -119,6 +120,10 @@ export class MeshClient {
     this._machine.setLatency(Date.now() - sentAt);
   }
 
+  async sendReaction(meetingCode: string, emoji: string): Promise<void> {
+    await this._invoke('send_reaction', { meetingCode, emoji });
+  }
+
   // ── Event emitter ─────────────────────────────────────────────────────────
 
   on<K extends keyof EventMap>(event: K, handler: EventMap[K]): void {
@@ -156,6 +161,7 @@ export class MeshClient {
     });
 
     s.on('Kicked',        p  => this._emit('Kicked', p));
+    s.on('ReactionReceived', p => this._emit('ReactionReceived', p));
     s.on('HeartbeatAck',  () => { /* latency measured on emit side */ });
     s.on('Error',         (p: { code: string; detail: string }) => {
       if (p.code === 'RATE_LIMITED') this._emit('RateLimited', p.detail);

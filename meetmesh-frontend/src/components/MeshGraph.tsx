@@ -28,6 +28,8 @@ interface GraphNode {
   restDist: number;
   /** How many nodes share this ring — drives angular spacing force. */
   ringCount: number;
+  /** Index within this ring, for initial angular placement. */
+  ringSlot: number;
 }
 
 type ParticipantRole = 'Host' | 'Organizer' | 'Speaker' | 'Attendee' | 'Presentation';
@@ -44,27 +46,39 @@ const ROLE_PRIORITY: Record<ParticipantRole, number> = {
 };
 
 // ── Physics constants ─────────────────────────────────────────────────────────
-// Ring layout — nodes are assigned to concentric rings by role, 6 per ring max.
-// Organizers/Speakers fill inner rings; Attendees go to outer rings.
-const RING_CAPACITY = 6;     // max non-host nodes per ring
-const RING_BASE     = 155;   // inner-ring radius (px) — ring 0
-const RING_GAP      = 90;    // extra px added per ring level
+// Reduced radii so the graph fits on small mobile screens naturally.
+const RING_CAPACITY = 6;    // max non-host nodes per ring
+const RING_BASE     = 120;  // inner-ring radius (px) — was 155
+const RING_GAP      = 72;   // extra px added per ring level — was 90
 
-const SPRING_STEP  = 0.055; // fraction of radial spring error corrected per frame
-const MIN_DIST     = 52;    // absolute minimum centre-to-centre clearance (px)
-const CLUSTER_REST = 76;    // visited-cluster pull rest distance (px)
+const SPRING_STEP  = 0.08;  // fraction of radial spring error corrected per frame — was 0.055
+const MIN_DIST     = 60;    // absolute minimum centre-to-centre clearance (px) — was 52
+const CLUSTER_REST = 68;    // visited-cluster pull rest distance (px)
 const CLUSTER_STEP = 0.04;  // fraction of cluster error corrected per frame
 
-// Cursor repulsion — subtle nudge, NOT a flee response.
-// CURSOR_DEAD creates a safe zone so hovering/clicking still works.
-const CURSOR_DIST  = 75;    // px — repulsion bubble radius (graph coords)
-const CURSOR_DEAD  = 40;    // px — inner dead zone: no push when cursor THIS close
-const CURSOR_STR   = 0.038; // push strength (calibrated so max displacement ≈ 25 px)
-const DRIFT_AMP    = 0.06;  // px/frame — per-node sinusoidal breathing (~1 px peak)
-// ─────────────────────────────────────────────────────────────────────────────
+// Cursor repulsion
+const CURSOR_DIST  = 75;
+const CURSOR_DEAD  = 40;
+const CURSOR_STR   = 0.038;
+const DRIFT_AMP    = 0.06;
 
-const ZOOM_MIN = 0.3;
-const ZOOM_MAX = 3;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 3.5;
+
+/** Number of warm-up physics steps run synchronously before first paint. */
+const WARMUP_STEPS = 80;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Compute initial (x,y) for a node placed at ringSlot i of ringCount total on a ring of radius r. */
+function ringSpawnPos(ringIndex: number, ringSlot: number, ringCount: number, restDist: number): { x: number; y: number } {
+  // Offset angle per ring so rings don't align visually
+  const ringOffset = ringIndex * (Math.PI / RING_CAPACITY);
+  const angle = ringOffset + (ringSlot / Math.max(ringCount, 1)) * 2 * Math.PI;
+  return { x: Math.cos(angle) * restDist, y: Math.sin(angle) * restDist };
+}
+
+// ── Node label ────────────────────────────────────────────────────────────────
 
 function NodeLabel({ name, y, color }: { name: string; y: number; color: string }) {
   const maxChars = 14;
@@ -82,6 +96,8 @@ function NodeLabel({ name, y, color }: { name: string; y: number; color: string 
     </g>
   );
 }
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 function MeshGraphInner({
   participants, visitedNodes, onNodeClick, hostPeerId,
@@ -107,11 +123,22 @@ function MeshGraphInner({
   const panRef       = useRef({ active: false, lastX: 0, lastY: 0 });
   const mouseRef     = useRef<{ x: number; y: number } | null>(null);
 
+  // Pinch-to-zoom state
+  const pinchRef = useRef<{ active: false } | { active: true; dist: number; midX: number; midY: number }>({ active: false });
+
   const [refreshKey,     setRefreshKey]     = useState(0);
   const [containerScale, setContainerScale] = useState(1);
   const [tooltip, setTooltip] = useState<{
     name: string; role: string; color: string; x: number; y: number;
   } | null>(null);
+
+  // ── Dynamic node radius based on container scale ───────────────────────────
+  // Instead of CSS transform:scale (which breaks physics coords), we compute
+  // actual SVG radii from containerScale and pass them to the rendered elements.
+  const nodeR     = Math.max(18, Math.round(26 * Math.min(1, containerScale + 0.15)));
+  const nodeHaloR = nodeR + 7;
+  const hostR     = Math.max(28, Math.round(38 * Math.min(1, containerScale + 0.15)));
+  const hostHaloR = hostR + 6;
 
   const applyTransform = useCallback((t: { x: number; y: number; k: number }) => {
     gRef.current?.setAttribute(
@@ -153,7 +180,7 @@ function MeshGraphInner({
     let totalMov   = 0;
 
     const containerShort = Math.min(dimsRef.current.width, dimsRef.current.height);
-    const gs = Math.max(0.28, Math.min(1.0, containerShort / 560));
+    const gs = Math.max(0.28, Math.min(1.0, containerShort / 480)); // was /560 — scales up for small screens
     const sBase    = RING_BASE    * gs;
     const sGap     = RING_GAP     * gs;
     const sMin     = MIN_DIST     * gs;
@@ -237,15 +264,24 @@ function MeshGraphInner({
         return a.displayName.localeCompare(b.displayName);
       });
 
-    // FIND HOST: Priority 1 = hostPeerId prop, Priority 2 = role string
     let hostParticipant = hostPeerId ? valid.find(p => p.peerId === hostPeerId) : null;
     if (!hostParticipant) {
       hostParticipant = valid.find(p => p.role?.toLowerCase() === 'host') || null;
     }
 
-    // Filter by peerId to avoid object equality issues
     const nonHostParticipants = valid.filter(p => p.peerId !== hostParticipant?.peerId);
     const prevById = new Map(nodesRef.current.map(n => [n.id, n]));
+
+    // Pre-compute ring layout
+    const ringData = nonHostParticipants.map((_, i) => {
+      const ringIndex  = Math.floor(i / RING_CAPACITY);
+      const ringStart  = ringIndex * RING_CAPACITY;
+      const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHostParticipants.length);
+      const ringCount  = ringEnd - ringStart;
+      const ringSlot   = i - ringStart;
+      const restDist   = RING_BASE + ringIndex * RING_GAP;
+      return { ringIndex, ringCount, ringSlot, restDist };
+    });
 
     const newNodes: GraphNode[] = [];
     if (hostParticipant) {
@@ -255,40 +291,50 @@ function MeshGraphInner({
         visited: visitedNodes.has(hostParticipant.peerId),
         role: 'Host',
         photo: parseProfile(hostParticipant.json)?.photo,
-        ringIndex: 0, restDist: 0, ringCount: 0,
+        ringIndex: 0, restDist: 0, ringCount: 0, ringSlot: 0,
       });
     }
 
-    const ringData = nonHostParticipants.map((p, i) => {
-      const ringIndex  = Math.floor(i / RING_CAPACITY);
-      const ringStart  = ringIndex * RING_CAPACITY;
-      const ringEnd    = Math.min(ringStart + RING_CAPACITY, nonHostParticipants.length);
-      const ringCount  = ringEnd - ringStart;
-      const restDist   = RING_BASE + ringIndex * RING_GAP;
-      return { ringIndex, ringCount, restDist };
-    });
-
     nonHostParticipants.forEach((p, i) => {
       const prev = prevById.get(p.peerId);
-      const spawnJitter = i % 2 === 0 ? 1 : -1;
       const role = (p.role?.charAt(0).toUpperCase() + p.role?.slice(1).toLowerCase()) as Exclude<ParticipantRole, 'Host'>;
-      
+      const rd = ringData[i];
+
+      // KEY FIX: spawn at the correct ring position instead of near-origin.
+      // Use previous position if the node already existed (smooth rejoins).
+      let spawnX: number, spawnY: number;
+      if (prev) {
+        spawnX = prev.x; spawnY = prev.y;
+      } else {
+        const pos = ringSpawnPos(rd.ringIndex, rd.ringSlot, rd.ringCount, rd.restDist);
+        // Add small jitter so nodes on the same ring don't perfectly overlap during warm-up
+        spawnX = pos.x + (Math.random() - 0.5) * 8;
+        spawnY = pos.y + (Math.random() - 0.5) * 8;
+      }
+
       newNodes.push({
         id:       p.peerId,
         p,
-        x:        prev?.x ?? spawnJitter * 4,
-        y:        prev?.y ?? (i % 3 === 0 ? 4 : -4),
+        x:        spawnX,
+        y:        spawnY,
         visited:  visitedNodes.has(p.peerId),
         role:     role || 'Attendee',
         photo:    parseProfile(p.json)?.photo,
-        ...ringData[i],
+        ...rd,
       });
     });
 
     nodesRef.current = newNodes;
+
+    // ── Warm-up: run physics steps synchronously before first React paint ──
+    // This ensures nodes are already spread when the SVG first renders,
+    // eliminating the "nodes all start clustered" visual glitch.
+    for (let step = 0; step < WARMUP_STEPS; step++) {
+      relaxStep();
+    }
+
     setNodes(newNodes);
     setRefreshKey(k => k + 1);
-    relaxStep();
     flushPositions();
   }, [participants, visitedNodes, relaxStep, flushPositions, hostPeerId]);
 
@@ -330,7 +376,7 @@ function MeshGraphInner({
       dimsRef.current = { width: w, height: h };
       svgRef.current?.setAttribute('viewBox', `0 0 ${w} ${h}`);
       applyTransform({ x: w / 2, y: h / 2, k: transformRef.current.k });
-      const gs = Math.max(0.28, Math.min(1.0, Math.min(w, h) / 560));
+      const gs = Math.max(0.28, Math.min(1.0, Math.min(w, h) / 480));
       setContainerScale(gs);
       relaxStep(); flushPositions();
     };
@@ -348,8 +394,13 @@ function MeshGraphInner({
     const xs = currentNodes.map(n => n.x), ys = currentNodes.map(n => n.y);
     const nW = Math.max(...xs) - Math.min(...xs), nH = Math.max(...ys) - Math.min(...ys);
     if (nW === 0 || nH === 0) { applyTransform({ x: dims.width / 2, y: dims.height / 2, k: 1 }); return; }
-    const pad   = dims.width >= 1100 ? 170 : 110;
-    const scale = Math.min((dims.width - pad * 2) / nW, (dims.height - pad * 2) / nH, maxScale);
+    // Adaptive padding — tight on mobile so nodes use maximum screen area
+    const isMobileView = Math.min(dims.width, dims.height) < 560;
+    // On mobile: 36px each side gives full-width graph usage; on desktop give more breathing room
+    const pad = isMobileView ? 36 : (dims.width >= 1100 ? 170 : 100);
+    // On mobile allow a higher effective scale so nodes render larger
+    const effectiveMax = isMobileView ? Math.min(maxScale, 1.4) : maxScale;
+    const scale = Math.min((dims.width - pad * 2) / nW, (dims.height - pad * 2) / nH, effectiveMax);
     applyTransform({
       x: dims.width  / 2 - ((Math.min(...xs) + Math.max(...xs)) / 2) * scale,
       y: dims.height / 2 - ((Math.min(...ys) + Math.max(...ys)) / 2) * scale,
@@ -358,7 +409,11 @@ function MeshGraphInner({
   }, [applyTransform]);
 
   useEffect(() => {
-    if (nodes.length > 0) { const t = setTimeout(() => zoomToFit(0.88), 150); return () => clearTimeout(t); }
+    if (nodes.length > 0) {
+      // Delay slightly to let the container resize observer measure the correct dims
+      const t = setTimeout(() => zoomToFit(0.85), 120);
+      return () => clearTimeout(t);
+    }
   }, [nodes.length, zoomToFit]);
 
   useEffect(() => {
@@ -369,26 +424,29 @@ function MeshGraphInner({
 
   const zoomIn  = useCallback((e?: React.PointerEvent | React.MouseEvent) => {
     e?.preventDefault(); e?.stopPropagation();
-    applyTransform({ ...transformRef.current, k: Math.min(ZOOM_MAX, transformRef.current.k * 1.08) });
+    applyTransform({ ...transformRef.current, k: Math.min(ZOOM_MAX, transformRef.current.k * 1.15) });
   }, [applyTransform]);
   const zoomOut = useCallback((e?: React.PointerEvent | React.MouseEvent) => {
     e?.preventDefault(); e?.stopPropagation();
-    applyTransform({ ...transformRef.current, k: Math.max(ZOOM_MIN, transformRef.current.k / 1.08) });
+    applyTransform({ ...transformRef.current, k: Math.max(ZOOM_MIN, transformRef.current.k / 1.15) });
   }, [applyTransform]);
   const recenter = useCallback((e?: React.PointerEvent | React.MouseEvent) => {
     e?.preventDefault(); e?.stopPropagation();
-    const { width, height } = dimsRef.current;
-    applyTransform({ x: width / 2, y: height / 2, k: 1 });
-  }, [applyTransform]);
+    zoomToFit(0.92);
+  }, [zoomToFit]);
+
+  // ── Pan (pointer events) ───────────────────────────────────────────────────
 
   const handlePanStart = (e: React.PointerEvent) => {
     if ((e.target as Element).closest('.constellation-node')) return;
+    // Don't start pan if this is a second pointer (pinch gesture incoming)
+    if (e.isPrimary === false) return;
     panRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
     svgRef.current?.classList.add('is-panning');
     (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
   };
   const handlePanMove = (e: React.PointerEvent) => {
-    if (!panRef.current.active) return;
+    if (!panRef.current.active || pinchRef.current.active) return;
     const dx = e.clientX - panRef.current.lastX, dy = e.clientY - panRef.current.lastY;
     panRef.current.lastX = e.clientX; panRef.current.lastY = e.clientY;
     const cur = transformRef.current;
@@ -399,6 +457,59 @@ function MeshGraphInner({
     svgRef.current?.classList.remove('is-panning');
     (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId);
   };
+
+  // ── Pinch-to-zoom (native touch events on the container div) ───────────────
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const midX = (t0.clientX + t1.clientX) / 2;
+        const midY = (t0.clientY + t1.clientY) / 2;
+        pinchRef.current = { active: true, dist, midX, midY };
+        panRef.current.active = false;
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinchRef.current.active) return;
+      e.preventDefault();
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const pinch = pinchRef.current as { active: true; dist: number; midX: number; midY: number };
+      const ratio = newDist / (pinch.dist || 1);
+      const cur = transformRef.current;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+
+      // Zoom around the pinch midpoint
+      const cx = ((pinch.midX - rect.left) / rect.width)  * dimsRef.current.width;
+      const cy = ((pinch.midY - rect.top)  / rect.height) * dimsRef.current.height;
+      const newK = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cur.k * ratio));
+      applyTransform({
+        x: cx - (cx - cur.x) * (newK / cur.k),
+        y: cy - (cy - cur.y) * (newK / cur.k),
+        k: newK,
+      });
+      pinch.dist = newDist;
+    };
+    const onTouchEnd = () => {
+      pinchRef.current = { active: false };
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    el.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
+    };
+  }, [applyTransform]);
 
   const handleCursorMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -427,7 +538,7 @@ function MeshGraphInner({
         className="mesh-svg"
         width="100%" height="100%"
         viewBox={`0 0 ${dimsRef.current.width} ${dimsRef.current.height}`}
-        style={{ cursor: disableInteractions ? 'default' : 'grab' }}
+        style={{ cursor: disableInteractions ? 'default' : 'grab', touchAction: 'none' }}
         onPointerDown={disableInteractions  ? undefined : handlePanStart}
         onPointerMove={disableInteractions  ? undefined : handlePanMove}
         onPointerUp={disableInteractions    ? undefined : handlePanEnd}
@@ -446,8 +557,8 @@ function MeshGraphInner({
               <stop offset="45%"  stopColor="#FFD700" />
               <stop offset="100%" stopColor="#FFA500" />
             </radialGradient>
-            <clipPath id={nodePhotoClipId}><circle cx="0" cy="0" r="24" /></clipPath>
-            <clipPath id={hostPhotoClipId}><circle cx="0" cy="0" r="30" /></clipPath>
+            <clipPath id={nodePhotoClipId}><circle cx="0" cy="0" r={nodeR} /></clipPath>
+            <clipPath id={hostPhotoClipId}><circle cx="0" cy="0" r={hostR} /></clipPath>
           </defs>
 
           {(() => {
@@ -455,9 +566,9 @@ function MeshGraphInner({
               new Map(nonHostNodes.map(n => [n.ringIndex, n.restDist])).entries()
             ).sort(([a], [b]) => a - b);
             const ringColors = [
-              'rgba(139,92,246,0.13)',  // ring 0 — organizer purple
-              'rgba(59,130,246,0.10)',  // ring 1 — speaker blue
-              'rgba(20,184,166,0.08)',  // ring 2 — attendee teal
+              'rgba(139,92,246,0.13)',
+              'rgba(59,130,246,0.10)',
+              'rgba(20,184,166,0.08)',
             ];
             return rings.map(([ringIndex, restDist]) => (
               <circle
@@ -507,24 +618,24 @@ function MeshGraphInner({
                 onClick={e => handleInnerNodeClick(node, e)}
                 style={{ cursor: 'pointer', '--node-ring-color': theme.ring } as React.CSSProperties}
               >
-                <circle className="node-halo" r="33" fill="none" stroke={theme.ring}
+                <circle className="node-halo" r={nodeHaloR} fill="none" stroke={theme.ring}
                   strokeWidth="2.4" opacity={node.visited ? 0.2 : 0.7} />
                 {node.visited && (
-                  <circle r="36" fill="none" stroke="#6366f1" strokeWidth="1.2"
+                  <circle r={nodeHaloR + 3} fill="none" stroke="#6366f1" strokeWidth="1.2"
                     opacity="0.5" strokeDasharray="4 3" />
                 )}
-                <circle className="node-core" r="26" fill="#0a0a0a"
+                <circle className="node-core" r={nodeR} fill="#0a0a0a"
                   stroke={node.visited ? '#4f46e5' : theme.ring} strokeWidth="1.8" />
                 {node.photo
-                  ? <image href={node.photo} x="-24" y="-24" width="48" height="48"
+                  ? <image href={node.photo} x={-nodeR} y={-nodeR} width={nodeR * 2} height={nodeR * 2}
                       clipPath={`url(#${nodePhotoClipId})`} opacity={node.visited ? 0.5 : 1} />
-                  : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize="16px"
+                  : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize={`${Math.round(nodeR * 0.62)}px`}
                       fontFamily="JetBrains Mono, monospace" fontWeight="600"
                       fill={node.visited ? '#6366f1' : theme.text}>
                       {node.p.displayName.charAt(0).toUpperCase()}
                     </text>
                 }
-                <NodeLabel name={node.p.displayName} y={47}
+                <NodeLabel name={node.p.displayName} y={nodeHaloR + 14}
                   color={node.visited ? '#818cf8' : '#d4d4d4'} />
               </g>
             );
@@ -539,20 +650,21 @@ function MeshGraphInner({
               onClick={e => handleInnerNodeClick(hostNode, e)}
               style={{ cursor: 'pointer', '--node-ring-color': ROLE_THEME.Host.ring } as React.CSSProperties}
             >
-              <circle className="node-halo" r="44" fill="none" stroke={ROLE_THEME.Host.ring} strokeWidth="5" />
-              <circle className="node-core host-sun-core" r="38" fill={`url(#${hostSunGradientId})`} stroke="#FFA500" strokeWidth="3.2" />
+              <circle className="node-halo" r={hostHaloR} fill="none" stroke={ROLE_THEME.Host.ring} strokeWidth="5" />
+              <circle className="node-core host-sun-core" r={hostR} fill={`url(#${hostSunGradientId})`} stroke="#FFA500" strokeWidth="3.2" />
               {hostNode.photo
-                ? <image href={hostNode.photo} x="-38" y="-38" width="76" height="76" clipPath={`url(#${hostPhotoClipId})`} />
-                : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize="23px"
+                ? <image href={hostNode.photo} x={-hostR} y={-hostR} width={hostR * 2} height={hostR * 2} clipPath={`url(#${hostPhotoClipId})`} />
+                : <text className="node-initial" dy="0.35em" textAnchor="middle" fontSize={`${Math.round(hostR * 0.6)}px`}
                     fontFamily="JetBrains Mono, monospace" fontWeight="700" fill="#000">
                     {hostNode.p.displayName.charAt(0).toUpperCase()}
                   </text>
               }
-              <circle className="host-ring" r="42" fill="none" stroke="white" strokeWidth="1.7"
+              <circle className="host-ring" r={hostR + 4} fill="none" stroke="white" strokeWidth="1.7"
                 strokeDasharray="6 4" opacity="0.82" />
-              <path className="host-crown" d="M -15 -50 L -7 -39 L 0 -50 L 7 -39 L 15 -50 L 15 -33 L -15 -33 Z"
+              <path className="host-crown"
+                d={`M ${-hostR * 0.39} ${-(hostR + 14)} L ${-hostR * 0.18} ${-(hostR + 3)} L 0 ${-(hostR + 14)} L ${hostR * 0.18} ${-(hostR + 3)} L ${hostR * 0.39} ${-(hostR + 14)} L ${hostR * 0.39} ${-hostR + 2} L ${-hostR * 0.39} ${-hostR + 2} Z`}
                 fill={ROLE_THEME.Host.ring} stroke="#fff" strokeWidth="1" opacity="0.95" />
-              <NodeLabel name={hostNode.p.displayName} y={58} color={ROLE_THEME.Host.ring} />
+              <NodeLabel name={hostNode.p.displayName} y={hostHaloR + 14} color={ROLE_THEME.Host.ring} />
             </g>
           )}
         </g>
@@ -573,7 +685,7 @@ function MeshGraphInner({
 
       {!disableInteractions && (
         <div className="mesh-zoom-controls">
-          <button type="button" className="zoom-btn" title="Recenter"
+          <button type="button" className="zoom-btn zoom-btn--fit" title="Fit all (F)"
             onPointerDown={e => { e.preventDefault(); e.stopPropagation(); recenter(e); }}>⊕</button>
           <button type="button" className="zoom-btn" title="Zoom out"
             onPointerDown={e => { e.preventDefault(); e.stopPropagation(); zoomOut(e); }}>−</button>

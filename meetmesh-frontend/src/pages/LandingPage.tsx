@@ -35,6 +35,13 @@ export default function LandingPage() {
   const [joinCode, setJoinCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [isMobileSmall, setIsMobileSmall] = useState(() => window.innerWidth < 480);
+
+  useEffect(() => {
+    const check = () => setIsMobileSmall(window.innerWidth < 480);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     try {
@@ -183,7 +190,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mm-solar" style={{ position: 'relative' }}>
-                  <SpringMeshPreview />
+                  {!isMobileSmall && <SpringMeshPreview />}
                 </div>
 
                 <div className="mm-legend">
@@ -370,6 +377,10 @@ export default function LandingPage() {
                             value={joinCode}
                             onChange={e => { setJoinCode(e.target.value.toUpperCase()); setError(''); }}
                             maxLength={4}
+                            inputMode="text"
+                            autoCapitalize="characters"
+                            autoCorrect="off"
+                            spellCheck={false}
                             onKeyDown={e => e.key === 'Enter' && handleJoin()}
                           />
                         </div>

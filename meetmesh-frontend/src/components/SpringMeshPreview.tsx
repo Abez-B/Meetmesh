@@ -15,8 +15,8 @@ const NODE_DEFS = [
 const N = NODE_DEFS.length;
 
 /* ── Physics constants ──────────────────────────────────────────────────── */
-const REST_DIST       = 92;    // px from host (center)
-const MIN_DIST        = 42;    // minimum node-to-node clearance
+const REST_DIST       = 72;    // px from host (center)
+const MIN_DIST        = 34;    // minimum node-to-node clearance
 const SPRING_STEP     = 0.055; // fraction of target error corrected per frame
 const DRIFT_ANGLE_AMP = 0.20;  // rad — how much the target angle wanders
 const DRIFT_DIST_AMP  = 9;     // px — how much the target distance breathes

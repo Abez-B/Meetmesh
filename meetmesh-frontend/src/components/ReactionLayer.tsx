@@ -20,9 +20,10 @@ interface ReactionBarProps {
   selfName: string;
   selfAvatar?: string;
   participants: Participant[];
+  onFire?: (emoji: string) => void;
 }
 
-export function ReactionBar({ selfPeerId, selfName, selfAvatar, participants }: ReactionBarProps) {
+export function ReactionBar({ selfPeerId, selfName, selfAvatar, participants, onFire }: ReactionBarProps) {
   const [fired, setFired] = useState<string | null>(null);
   const mockSeeded = useRef(false);
 
@@ -46,6 +47,7 @@ export function ReactionBar({ selfPeerId, selfName, selfAvatar, participants }: 
       emoji,
       avatarUrl:   selfAvatar,
     });
+    onFire?.(emoji);
     setFired(emoji);
     setTimeout(() => setFired(null), 600);
   };

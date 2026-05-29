@@ -2031,14 +2031,22 @@ button, input, textarea, select {
    MOBILE STYLES (≤768px)
    ═══════════════════════════════════════ */
 @media (max-width: 768px) {
-  html {
-    font-size: 14px;
-  }
+html {
+font-size: 14px;
+scroll-behavior: smooth;
+-webkit-overflow-scrolling: touch;
+}
 
-  body {
-    font-size: 14px;
-    -webkit-text-size-adjust: 100%;
-  }
+body {
+font-size: 14px;
+-webkit-text-size-adjust: 100%;
+overscroll-behavior: none;
+}
+
+/* Prevent pull-to-refresh on mobile for app-like experience */
+body, .app-shell {
+overscroll-behavior-y: contain;
+}
 
   /* ── Reset ── */
   *, *::before, *::after {

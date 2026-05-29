@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Participant, parseProfile } from 'meetmesh-core';
 import { motion } from 'framer-motion';
 
@@ -38,17 +38,71 @@ interface Props {
 
 export function NodeInfoCard({ participant, visited, position, onClose, onMarkVisited, onMessage }: Props) {
   const profile = parseProfile(participant.json);
-  const [isMobile, setIsMobile] = useState(false);
 
+  // ── Synchronous mobile detection to avoid the flash from false → true ──────
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
   const roleKey = participant.role.toLowerCase();
 
+  // ── Hardware back-button / browser-back to close ───────────────────────────
+  useEffect(() => {
+    if (!isMobile) return;
+    // Push a dummy state so pressing back closes the sheet instead of navigating away
+    window.history.pushState({ nodeInfoOpen: true }, '');
+    const handlePop = () => onClose();
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+      // Clean up the dummy history entry if the card is closed programmatically
+      if (window.history.state?.nodeInfoOpen) {
+        window.history.back();
+      }
+    };
+  }, [isMobile, onClose]);
+
+  // ── Swipe-down-to-dismiss for the bottom sheet ─────────────────────────────
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragStartY = useRef<number | null>(null);
+  const dragCurrentY = useRef(0);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragCurrentY.current = 0;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (dragStartY.current === null) return;
+    const dy = e.touches[0].clientY - dragStartY.current;
+    if (dy < 0) return; // don't allow dragging up
+    dragCurrentY.current = dy;
+    if (sheetRef.current) {
+      sheetRef.current.style.transform = `translateY(${dy}px)`;
+      sheetRef.current.style.transition = 'none';
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (dragStartY.current === null) return;
+    const threshold = 120; // px — dismiss if dragged this far down
+    if (dragCurrentY.current > threshold) {
+      onClose();
+    } else {
+      // Snap back
+      if (sheetRef.current) {
+        sheetRef.current.style.transform = '';
+        sheetRef.current.style.transition = '';
+      }
+    }
+    dragStartY.current = null;
+    dragCurrentY.current = 0;
+  }, [onClose]);
+
+  // ── Desktop card positioning ───────────────────────────────────────────────
   const cardStyle: React.CSSProperties = isMobile ? {
     width: '100%',
     maxWidth: 'none',
@@ -71,18 +125,49 @@ export function NodeInfoCard({ participant, visited, position, onClose, onMarkVi
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      style={isMobile ? { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', zIndex: 2000 } : {}}
+      style={isMobile ? {
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        zIndex: 2000,
+        // On mobile, let touch events through to the overlay for tap-to-close
+        touchAction: 'none',
+      } : {}}
     >
       <motion.div
+        ref={sheetRef}
         className="nodeinfo-panel"
+        // Stop tap-on-panel from closing via overlay click
         onClick={e => e.stopPropagation()}
+        // Swipe-down gesture handlers
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
         style={cardStyle}
         initial={isMobile ? { y: '100%' } : { opacity: 0, scale: 0.88, y: 12 }}
         animate={isMobile ? { y: 0 }   : { opacity: 1, scale: 1,    y: 0 }}
         exit={isMobile    ? { y: '100%' } : { opacity: 0, scale: 0.88, y: 12 }}
-        transition={{ duration: isMobile ? 0.35 : 0.22, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: isMobile ? 0.32 : 0.22, ease: [0.16, 1, 0.3, 1] }}
       >
-        <button className="nodeinfo-close" onClick={onClose} aria-label="Close">✕</button>
+        {/* ── Drag handle (mobile only) — visual affordance for swipe-down ── */}
+        {isMobile && (
+          <div className="nodeinfo-drag-handle" aria-hidden>
+            <div className="nodeinfo-drag-pill" />
+          </div>
+        )}
+
+        {/* ── Close button — large tap target on mobile ── */}
+        <button
+          className="nodeinfo-close"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          ✕
+        </button>
 
         {/* ── Avatar + name ── */}
         <div className="nodeinfo-head">
