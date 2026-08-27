@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from './Logo';
@@ -23,6 +23,13 @@ export function FloatingNavbar({
   const location = useLocation();
   const [copied, setCopied] = useState(false);
   const [muted, setMuted] = useState(() => soundService.isMuted());
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleCopyCode = () => {
     if (!meetingCode) return;
@@ -55,11 +62,11 @@ export function FloatingNavbar({
         {/* Brand */}
         <div className="fn-brand" onClick={() => navigate('/')} role="button" tabIndex={0}>
           <div className="fn-brand-logo">
-            <Logo size={26} />
+            <Logo size={isMobile ? 22 : 26} />
           </div>
           <div className="fn-brand-title">
             <span className="fn-wordmark">we-inai</span>
-            <span className="fn-badge">இணை · live</span>
+            <span className="fn-badge">live</span>
           </div>
         </div>
 
@@ -79,16 +86,16 @@ export function FloatingNavbar({
               <button
                 type="button"
                 className="fn-nav-btn"
-                onClick={() => scrollToSection('mesh-preview-section')}
+                onClick={() => scrollToSection('landing-panel-section')}
               >
-                Live Mesh
+                Join Room
               </button>
               <button
                 type="button"
                 className="fn-nav-btn"
-                onClick={() => scrollToSection('landing-panel-section')}
+                onClick={() => scrollToSection('mesh-preview-section')}
               >
-                Enter Room
+                Live Mesh
               </button>
             </>
           ) : meetingCode ? (
@@ -117,18 +124,21 @@ export function FloatingNavbar({
 
         {/* Right actions */}
         <div className="fn-right">
-          <button
-            type="button"
-            className="fn-sound-btn"
-            onClick={() => setMuted(soundService.toggleMute())}
-            title={muted ? 'Audio muted (click to unmute)' : 'Audio active (click to mute)'}
-            aria-label={muted ? 'Audio muted' : 'Audio active'}
-          >
-            {muted ? '🔇' : '🔊'}
-          </button>
+          {variant !== 'landing' && (
+            <button
+              type="button"
+              className="fn-sound-btn"
+              onClick={() => setMuted(soundService.toggleMute())}
+              title={muted ? 'Audio muted (click to unmute)' : 'Audio active (click to mute)'}
+              aria-label={muted ? 'Audio muted' : 'Audio active'}
+            >
+              {muted ? '🔇' : '🔊'}
+            </button>
+          )}
 
           <div className="fn-status">
             <ConnectionDot />
+            {!isMobile && <span className="fn-status-text">Relay</span>}
           </div>
 
           {variant === 'landing' ? (
@@ -143,8 +153,8 @@ export function FloatingNavbar({
                 }
               }}
             >
-              <span>Join / Host</span>
-              <span style={{ fontSize: '14px', lineHeight: 1 }}>→</span>
+              <span>{isMobile ? 'Enter' : 'Enter Code'}</span>
+              <span className="fn-cta-arrow">→</span>
             </button>
           ) : (
             <button

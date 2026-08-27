@@ -22,7 +22,10 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { code } = useParams<{ code?: string }>();
 
-  const [tab, setTab] = useState<'create' | 'join'>(code ? 'join' : 'create');
+  const [tab, setTab] = useState<'create' | 'join'>(() => {
+    if (code) return 'join';
+    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'join' : 'create';
+  });
   const [eventName, setEventName] = useState('');
   const [hostName, setHostName] = useState('');
   const [hostLinkedIn, setHostLinkedIn] = useState('');
@@ -163,7 +166,7 @@ export default function LandingPage() {
                 <span className="mm-status-pill">Websocket mesh active</span>
               </div>
 
-              <div className="mm-proof-grid">
+              <div className="mm-proof-grid mm-desktop-proof">
                 {([
                   ['3D', 'live mesh presence'],
                   ['QR', 'frictionless entry'],
@@ -176,7 +179,7 @@ export default function LandingPage() {
                 ))}
               </div>
 
-              <p className="mm-hint">
+              <p className="mm-hint mm-desktop-proof">
                 Built for founder dinners, campus events, accelerator cohorts, and sponsor-heavy conferences.
               </p>
             </motion.section>
@@ -416,10 +419,23 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mm-bottom-strip">
-                  <span className="mm-strip-tag">SignalR transport</span>
-                  <span className="mm-strip-tag">D3 simulation</span>
-                  <span className="mm-strip-tag">Role-aware mesh</span>
+                  <span className="mm-strip-tag">WebSocket Relay</span>
+                  <span className="mm-strip-tag">Spatial Physics</span>
+                  <span className="mm-strip-tag">Live Audio FX</span>
                 </div>
+              </div>
+
+              <div className="mm-mobile-stats">
+                {([
+                  ['3D', 'Spatial Mesh'],
+                  ['QR', 'Instant Entry'],
+                  ['RT', 'Live Roles'],
+                ] as const).map(([val, lbl]) => (
+                  <div className="mm-proof-card" key={val}>
+                    <span className="mm-proof-val">{val}</span>
+                    <span className="mm-proof-lbl">{lbl}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
