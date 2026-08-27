@@ -217,6 +217,16 @@ export class MockMeshClient {
     this._patch({ latencyMs: Math.round(8 + Math.random() * 20) });
   }
   async sendReaction(_meetingCode: string, _emoji: string): Promise<void> { }
+  async sendChatMessage(_meetingCode: string, _text: string): Promise<void> { }
+  async sendDirectMessage(_meetingCode: string, _toPeerId: string, _text: string): Promise<void> { }
+  async sendAnnouncement(_meetingCode: string, message: string, hostName?: string): Promise<void> {
+    this._fire('AnnouncementReceived', {
+      id: Math.random().toString(36).slice(2),
+      message,
+      timestamp: new Date().toISOString(),
+      hostName: hostName || 'Host',
+    });
+  }
 
   on(event: string, handler: EventHandler): void {
     if (!this._handlers.has(event)) this._handlers.set(event, new Set());

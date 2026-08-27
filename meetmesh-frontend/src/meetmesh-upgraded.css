@@ -9,7 +9,7 @@
 ───────────────────────────────────────────── */
 .mm-root {
   font-family: 'JetBrains Mono', monospace;
-  background: #090909;
+  background: transparent;
   min-height: 100vh;
   color: #d4d4d4;
   -webkit-font-smoothing: antialiased;
@@ -18,13 +18,7 @@
   position: relative;
 }
 .mm-root::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
-  background-size: 28px 28px;
-  z-index: 0;
+  display: none;
 }
 .mm-nav {
   position: sticky;
@@ -61,7 +55,7 @@
 .mm-page {
   position: relative; z-index: 1;
   width: min(100%, 1200px); margin: 0 auto;
-  padding: clamp(32px, 5vw, 64px) clamp(20px, 5vw, 48px) 80px;
+  padding: clamp(88px, 10vw, 112px) clamp(20px, 5vw, 48px) 80px;
 }
 .mm-hero {
   display: grid;
@@ -287,13 +281,12 @@
 ───────────────────────────────────────────── */
 .jp-root {
   font-family: 'JetBrains Mono', monospace;
-  background: #090909; min-height: 100vh; color: #d4d4d4;
+  background: transparent; min-height: 100vh; color: #d4d4d4;
   -webkit-font-smoothing: antialiased; position: relative; overflow-x: hidden;
+  padding-top: 84px;
 }
 .jp-root::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 28px 28px; z-index: 0;
+  display: none;
 }
 .jp-nav {
   position: sticky; top: 0; z-index: 50;
@@ -462,14 +455,13 @@
    WAITING ROOM  (.wr-*)
 ───────────────────────────────────────────── */
 .wr-root {
-  font-family: 'JetBrains Mono', monospace; background: #090909;
+  font-family: 'JetBrains Mono', monospace; background: transparent;
   min-height: 100vh; color: #d4d4d4; -webkit-font-smoothing: antialiased;
   display: flex; flex-direction: column; overflow-x: hidden; position: relative;
+  padding-top: 84px;
 }
 .wr-root::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 28px 28px; z-index: 0;
+  display: none;
 }
 .wr-nav {
   position: sticky; top: 0; z-index: 50;
@@ -597,7 +589,7 @@
    MEETING ROOM  (.mr-*)
 ───────────────────────────────────────────── */
 .mr-root {
-  font-family: 'JetBrains Mono', monospace; background: #090909;
+  font-family: 'JetBrains Mono', monospace; background: transparent;
   /* Use dvh so the graph fills real available height, not the fake 100vh */
   height: 100dvh;
   min-height: 100dvh;
@@ -605,9 +597,7 @@
   display: flex; flex-direction: column; overflow: hidden; position: relative;
 }
 .mr-root::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
-  background-size: 28px 28px; z-index: 0;
+  display: none;
 }
 .mr-topbar {
   position: sticky; top: 0; z-index: 50;
@@ -727,14 +717,12 @@
    HOST PANEL  (.hp-*)
 ───────────────────────────────────────────── */
 .hp-root {
-  font-family: 'JetBrains Mono', monospace; background: #090909;
+  font-family: 'JetBrains Mono', monospace; background: transparent;
   min-height: 100vh; color: #d4d4d4; -webkit-font-smoothing: antialiased;
   display: flex; flex-direction: column; overflow: hidden; position: relative;
 }
 .hp-root::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
-  background-size: 28px 28px; z-index: 0;
+  display: none;
 }
 .hp-topbar {
   position: sticky; top: 0; z-index: 50;
@@ -1106,7 +1094,7 @@ MOBILE RESPONSIVE — all pages
   padding: 0 18px; 
   padding-top: var(--safe-area-inset-top);
 }
-.mm-page { padding: calc(24px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); }
+.mm-page { padding: calc(72px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); }
 .mm-hero { display: flex; flex-direction: column; gap: 28px; }
 .mm-copy { order: 1; } .mm-visual { order: 2; } .mm-panel { order: 3; position: static; }
 .mm-title { 
@@ -1199,7 +1187,7 @@ MOBILE RESPONSIVE — all pages
 }
 .jp-page { 
   grid-template-columns: 1fr; 
-  padding: calc(20px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); 
+  padding: calc(72px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); 
   gap: 20px; 
 }
 .jp-aside { 
@@ -1327,7 +1315,7 @@ MOBILE RESPONSIVE — all pages
   padding-top: var(--safe-area-inset-top);
 }
 .wr-lobby { 
-  padding: calc(24px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); 
+  padding: calc(72px + var(--safe-area-inset-top)) 16px calc(80px + var(--safe-area-inset-bottom)); 
 }
 .wr-lobby-card { 
   padding: 32px 20px; 

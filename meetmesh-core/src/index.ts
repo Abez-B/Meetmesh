@@ -20,6 +20,7 @@ export type {
   MetadataUpdatedPayload,
   HostChangedPayload,
   ErrorPayload,
+  ChatMessage,
 }                            from './types';
 export { parseProfile }      from './types';
 export type { MachineState, MachineEvent } from './StateMachine';

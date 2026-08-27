@@ -5,7 +5,8 @@ import { useMeshClient } from '../hooks/useMeshClient';
 import { CameraCapture } from '../components/CameraCapture';
 import { TooltipButton } from '../components/TooltipButton';
 import { isValidMeetingCode } from 'meetmesh-core';
-import { Logo } from '../components/Logo';
+import { FloatingNavbar } from '../components/FloatingNavbar';
+import { v4 as uuid } from 'uuid';
 import '../meetmesh-upgraded.css';
 
 const LINKEDIN_PEER_REGEX = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)\/?/i;
@@ -23,6 +24,7 @@ export default function JoinProfilePage() {
   const [linkedIn,  setLinkedIn]  = useState('');
   const [github,    setGithub]    = useState('');
   const [bio,       setBio]       = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -33,6 +35,7 @@ export default function JoinProfilePage() {
         if (p.linkedIn)  setLinkedIn(p.linkedIn);
         if (p.github || p.portfolio) setGithub(p.github || p.portfolio);
         if (p.bio)       setBio(p.bio);
+        if (Array.isArray(p.tags)) setSelectedTags(p.tags);
         if (p.photo)     { setPhoto(p.photo); setStep(2); }
       }
     } catch {}
@@ -66,19 +69,19 @@ export default function JoinProfilePage() {
       github:    github.trim() || undefined,
       bio:       bio.trim() || undefined,
       photo:     photoToSave,
+      tags:      selectedTags,
     };
     const profileJson = JSON.stringify(profileJsonObj);
 
     localStorage.setItem('meetmesh_profile_cache', JSON.stringify({ name: name.trim(), ...profileJsonObj }));
 
-    const linkedInRegex = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)\/?/i;
-    const match = linkedIn.trim().match(linkedInRegex);
+    const match = linkedIn.trim().match(LINKEDIN_PEER_REGEX);
     if (!match) {
       setError('Please enter a valid LinkedIn URL (e.g., linkedin.com/in/username)');
       setBusy(false);
       return;
     }
-    const peerId = match[1].toLowerCase();
+    const peerId = sessionStorage.getItem('meetmesh_peer_id') ?? localStorage.getItem('meetmesh_peer_id') ?? uuid();
     sessionStorage.setItem('meetmesh_peer_id', peerId);
     localStorage.setItem('meetmesh_peer_id', peerId);
     sessionStorage.setItem('meetmesh_last_name', name.trim());
@@ -100,16 +103,7 @@ export default function JoinProfilePage() {
 
   return (
     <div className="jp-root">
-      <nav className="jp-nav">
-        <div className="jp-nav-brand">
-          <Logo size={24} />
-          <span className="jp-nav-name">MeetMesh</span>
-        </div>
-        <div className="jp-nav-code">
-          <span>Meeting</span>
-          <strong>{normalizedCode}</strong>
-        </div>
-      </nav>
+      <FloatingNavbar variant="join" meetingCode={normalizedCode} />
 
       <div className="jp-page">
         <motion.aside
@@ -292,6 +286,42 @@ export default function JoinProfilePage() {
                     className="jp-textarea"
                   />
                   <div className="jp-char-count">{140 - bio.length} remaining</div>
+                </div>
+
+                <div className="jp-field">
+                  <label className="jp-label">Interest Tags (Pick up to 3)</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                    {['#AI', '#Founder', '#Engineering', '#Design', '#Product', '#Web3', '#Hiring', '#Student'].map(tag => {
+                      const active = selectedTags.includes(tag);
+                      return (
+                        <button
+                          type="button"
+                          key={tag}
+                          onClick={() => {
+                            if (active) setSelectedTags(selectedTags.filter(t => t !== tag));
+                            else if (selectedTags.length < 3) setSelectedTags([...selectedTags, tag]);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '9999px',
+                            fontSize: '11.5px',
+                            fontFamily: 'monospace',
+                            cursor: 'pointer',
+                            minHeight: '32px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.15s ease',
+                            border: active ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.12)',
+                            background: active ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.04)',
+                            color: active ? '#38bdf8' : '#94a3b8',
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <AnimatePresence>

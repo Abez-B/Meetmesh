@@ -86,7 +86,7 @@ body {
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-default);
-  background: #141414;
+  background: #06070d;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -101,20 +101,12 @@ button, input, textarea, select {
 .app-shell {
   min-height: 100vh;
   position: relative;
+  background: transparent;
 }
 
 /* Subtle dot grid overlay */
 .app-shell::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 24px 24px;
-  z-index: 0;
-  contain: strict;
-  will-change: transform;
-  transform: translateZ(0);
+  display: none;
 }
 
 .app-shell > * {

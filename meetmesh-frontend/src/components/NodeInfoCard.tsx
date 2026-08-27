@@ -214,6 +214,28 @@ export function NodeInfoCard({ participant, visited, position, onClose, onMarkVi
           {profile?.bio || 'No bio provided.'}
         </p>
 
+        {/* ── Interest Tags ── */}
+        {profile?.tags && profile.tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '10px 0' }}>
+            {profile.tags.map(t => (
+              <span
+                key={t}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontSize: '10.5px',
+                  fontFamily: 'monospace',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                }}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* ── Links ── */}
         {(profile?.linkedIn || profile?.github) && (
           <div className="nodeinfo-links">

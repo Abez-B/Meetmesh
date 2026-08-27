@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: meetmesh-api/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - ALLOWED_ORIGIN=*
+    restart: unless-stopped
+    volumes:
+      - api-data:/app/data
+
+volumes:
+  api-data:

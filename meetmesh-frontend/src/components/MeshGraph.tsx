@@ -22,6 +22,7 @@ interface GraphNode {
   visited: boolean;
   role: ParticipantRole;
   photo?: string;
+  tags: string[];
   /** Ring tier (0 = innermost). Set once on node creation. */
   ringIndex: number;
   /** Target distance from host in graph px — derived from ring tier. */
@@ -230,6 +231,25 @@ function MeshGraphInner({
         }
       }
 
+      // Tag-based magnetic attraction for common interests
+      if (node.tags && node.tags.length > 0) {
+        for (let j = 0; j < nonHost.length; j++) {
+          if (i === j) continue;
+          const o = nonHost[j];
+          if (!o.tags || o.tags.length === 0) continue;
+          const hasCommon = node.tags.some(t => o.tags.includes(t));
+          if (hasCommon) {
+            const tdx = o.x - node.x; const tdy = o.y - node.y;
+            const td = Math.sqrt(tdx * tdx + tdy * tdy) || 0.01;
+            if (td > sMin * 1.3) {
+              const tagPull = 0.012 * gs;
+              dx += tagPull * (tdx / td);
+              dy += tagPull * (tdy / td);
+            }
+          }
+        }
+      }
+
       const mouse = mouseRef.current;
       if (mouse) {
         const mdx = node.x - mouse.x; const mdy = node.y - mouse.y;
@@ -291,6 +311,7 @@ function MeshGraphInner({
         visited: visitedNodes.has(hostParticipant.peerId),
         role: 'Host',
         photo: parseProfile(hostParticipant.json)?.photo,
+        tags: parseProfile(hostParticipant.json)?.tags || [],
         ringIndex: 0, restDist: 0, ringCount: 0, ringSlot: 0,
       });
     }
@@ -320,6 +341,7 @@ function MeshGraphInner({
         visited:  visitedNodes.has(p.peerId),
         role:     role || 'Attendee',
         photo:    parseProfile(p.json)?.photo,
+        tags:     parseProfile(p.json)?.tags || [],
         ...rd,
       });
     });

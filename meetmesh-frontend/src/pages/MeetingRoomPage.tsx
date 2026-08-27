@@ -12,7 +12,9 @@ import { Logo } from '../components/Logo';
 import { ChatPanel } from '../components/ChatPanel';
 import { ReactionBar, ReactionFloats } from '../components/ReactionLayer';
 import { reactionStore } from '../mock/reactionStore';
+import { useUnreadDms, useUnreadGlobal } from '../mock/chatStore';
 import { parseProfile } from 'meetmesh-core';
+import { exportContactsAsVCard, exportContactsAsCSV } from '../utils/contactExport';
 import '../meetmesh-upgraded.css';
 import '../chat.css';
 
@@ -20,6 +22,8 @@ export default function MeetingRoomPage() {
   const client = useMeshClient();
   const state = useMeetingState();
   const navigate = useNavigate();
+  const unreadDms = useUnreadDms();
+  const unreadGlobal = useUnreadGlobal();
 
   const [visitedNodes, setVisitedNodes] = useState<Set<string>>(new Set());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -28,6 +32,7 @@ export default function MeetingRoomPage() {
   const [showSidebar, setSidebarOpen] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [dmPeerId, setDmPeerId] = useState<string | null>(null);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<{ id: string; message: string; hostName: string } | null>(null);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const fitRef = useRef<(() => void) | null>(null);
 
@@ -40,12 +45,22 @@ export default function MeetingRoomPage() {
   useEffect(() => {
     if (state.phase === 'ended') { navigate('/'); return; }
     if (state.phase === 'idle' && client.connectionStatus === 'disconnected') {
-      const pathCode = state.room?.meetingCode || window.location.pathname.split('/').pop();
-      const peerId = sessionStorage.getItem('meetmesh_peer_id');
-      const lastName = sessionStorage.getItem('meetmesh_last_name');
-      const lastJson = sessionStorage.getItem('meetmesh_last_profile_json') || '{}';
-      const isHost = sessionStorage.getItem('meetmesh_is_host') === 'true';
+      const pathCode = state.room?.meetingCode || window.location.pathname.split('/').pop() || '';
+      const isHost = sessionStorage.getItem('meetmesh_is_host') === 'true'
+        || Boolean(localStorage.getItem(`meetmesh_host_${pathCode}`));
+      const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${pathCode}`);
+      const peerId = sessionStorage.getItem('meetmesh_peer_id')
+        || (isHost ? hostPeerForRoom : null)
+        || localStorage.getItem('meetmesh_peer_id');
+      const lastName = sessionStorage.getItem('meetmesh_last_name')
+        || (isHost ? localStorage.getItem('meetmesh_last_name') : null);
+      const lastJson = sessionStorage.getItem('meetmesh_last_profile_json')
+        || (isHost ? localStorage.getItem('meetmesh_last_profile_json') : null)
+        || '{}';
+
       if (pathCode && peerId && (lastName || isHost)) {
+        sessionStorage.setItem('meetmesh_peer_id', peerId);
+        if (isHost) sessionStorage.setItem('meetmesh_is_host', 'true');
         client.connect().then(() => client.joinMeeting(pathCode, lastName || 'Host', peerId, lastJson).catch(console.error)).catch(console.error);
       } else {
         navigate(`/join/${pathCode}`);
@@ -70,6 +85,16 @@ export default function MeetingRoomPage() {
     };
   }, [client, state.selfPeerId]);
 
+  useEffect(() => {
+    const handleAnnouncement = (payload: { id: string; message: string; hostName: string }) => {
+      setActiveAnnouncement(payload);
+    };
+    client.on('AnnouncementReceived', handleAnnouncement);
+    return () => {
+      client.off('AnnouncementReceived', handleAnnouncement);
+    };
+  }, [client]);
+
   // Hoist useMemo above the early return — hooks must be called unconditionally.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const participantsList = useMemo(
@@ -90,9 +115,69 @@ export default function MeetingRoomPage() {
   const selfAvatar = selfParticipant ? parseProfile(selfParticipant.json)?.photo : undefined;
 
   const selectedParticipant = selectedNodeId ? state.room.participants[selectedNodeId] : null;
+  const hasUnread = unreadGlobal > 0 || (state.selfPeerId ? [...unreadDms].some(key => key.split('|').includes(state.selfPeerId!)) : false);
 
   return (
     <div className="mr-root">
+      <AnimatePresence>
+        {activeAnnouncement && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              position: 'fixed',
+              top: isMobile ? 'calc(62px + var(--safe-area-inset-top, 0px))' : 72,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9999,
+              width: 'min(92%, 580px)',
+              background: 'rgba(15, 17, 26, 0.92)',
+              border: '1px solid rgba(245, 158, 11, 0.5)',
+              boxShadow: '0 12px 36px rgba(0,0,0,0.85), 0 0 24px rgba(245, 158, 11, 0.25)',
+              borderRadius: 14,
+              padding: isMobile ? '10px 14px' : '12px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 14,
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>📢</span>
+              <div>
+                <div style={{ fontSize: 10.5, color: '#f59e0b', fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {activeAnnouncement.hostName} · Announcement
+                </div>
+                <div style={{ fontSize: 13.5, color: '#f8fafc', fontWeight: 500, marginTop: 2 }}>
+                  {activeAnnouncement.message}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveAnnouncement(null)}
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#94a3b8',
+                fontSize: 14,
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: 6,
+                lineHeight: 1,
+              }}
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="mr-topbar">
         <div className="mr-topbar-left">
           <Logo size={22} />
@@ -110,8 +195,10 @@ export default function MeetingRoomPage() {
           <button
             className={`mr-btn-secondary${showChat ? ' mr-btn-active' : ''}`}
             onClick={() => setShowChat(!showChat)}
+            style={{ position: 'relative' }}
           >
             💬 Chat
+            {hasUnread && !showChat && <span className="mr-chat-unread-dot" />}
           </button>
           <button
             className="mr-btn-secondary"
@@ -153,6 +240,7 @@ export default function MeetingRoomPage() {
         <AnimatePresence>
           {showChat && (
             <ChatPanel
+              meetingCode={code}
               selfPeerId={state.selfPeerId}
               selfName={selfName}
               selfAvatar={selfAvatar}
@@ -193,6 +281,49 @@ export default function MeetingRoomPage() {
                   onSelect={(peerId) => setSelectedNodeId(peerId)}
                 />
               </div>
+              <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 8, background: 'rgba(255,255,255,0.02)' }}>
+                <button
+                  type="button"
+                  onClick={() => exportContactsAsVCard(participantsList, visitedNodes, { eventName: state.room?.eventName })}
+                  style={{
+                    flex: 1,
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    background: 'rgba(56, 189, 248, 0.1)',
+                    color: '#38bdf8',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                  title="Export vCard to Apple/Google Contacts"
+                >
+                  <span>📇</span>
+                  <span>Export vCard</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportContactsAsCSV(participantsList, visitedNodes, { eventName: state.room?.eventName })}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: '#cbd5e1',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    cursor: 'pointer',
+                  }}
+                  title="Download CSV spreadsheet"
+                >
+                  CSV
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -206,9 +337,11 @@ export default function MeetingRoomPage() {
           className={`mr-mobile-nav-btn${showChat ? ' active' : ''}`}
           onClick={() => setShowChat(!showChat)}
           aria-label="Chat"
+          style={{ position: 'relative' }}
         >
           <span className="mr-mobile-nav-icon">💬</span>
           <span className="mr-mobile-nav-label">Chat</span>
+          {hasUnread && !showChat && <span className="mr-chat-unread-dot" />}
         </button>
         <button
           className={`mr-mobile-nav-btn${showSidebar ? ' active' : ''}`}

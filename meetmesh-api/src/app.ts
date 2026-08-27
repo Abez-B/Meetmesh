@@ -45,6 +45,16 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+// ── Root info endpoint ──────────────────────────────────────────────────────
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    service: "we-inai API & WebSocket Relay",
+    status: "online",
+    frontend: "http://localhost:5173",
+    health: "/api/health",
+  });
+});
+
 // ── Health / stats endpoint ─────────────────────────────────────────────────
 app.get("/api/health", (_req: Request, res: Response) => {
   const stats = getStats();

@@ -163,7 +163,7 @@ export default function PresentationPage() {
         <div>
           <div className="pp-brand">
             <Logo size={28} />
-            <span className="pp-brand-name">MeetMesh</span>
+            <span className="pp-brand-name">we-inai</span>
           </div>
 
           <div className="pp-event-kicker">

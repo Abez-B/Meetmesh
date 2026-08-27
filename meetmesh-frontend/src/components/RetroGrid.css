@@ -1,0 +1,70 @@
+.retro-grid-wrapper {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  z-index: -1;
+  background-color: #06070d;
+}
+
+@keyframes retro-grid-scroll {
+  0% {
+    transform: translateY(-50%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.retro-grid-projection {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  perspective: 260px;
+}
+
+.retro-grid-rotation {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 0;
+}
+
+.retro-grid-plane {
+  position: absolute;
+  inset: 0;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  transform-origin: 50% 0;
+  animation: retro-grid-scroll 14s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retro-grid-plane {
+    animation: none !important;
+    transform: translateY(-50%) !important;
+  }
+}
+
+.retro-grid-horizon-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 41, 117, 0.28) 0%, rgba(140, 30, 255, 0.22) 35%, rgba(255, 211, 25, 0.08) 60%, transparent 85%);
+  pointer-events: none;
+}
+
+.retro-grid-fade-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 0%, rgba(6, 7, 13, 0.25) 50%, rgba(6, 7, 13, 0.75) 100%);
+  pointer-events: none;
+}

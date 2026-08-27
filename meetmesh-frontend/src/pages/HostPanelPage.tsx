@@ -19,7 +19,7 @@ import { parseProfile } from 'meetmesh-core';
 import { Logo } from '../components/Logo';
 import { v4 as uuid } from 'uuid';
 import { copyToClipboard } from '../utils/clipboard';
-import { useUnreadDms } from '../mock/chatStore';
+import { useUnreadDms, useUnreadGlobal } from '../mock/chatStore';
 import '../meetmesh-upgraded.css';
 import '../chat.css';
 
@@ -72,6 +72,7 @@ const HostTopbar = memo(function HostTopbar({
           💬 Chat
           {chatHasUnread && <span className="hp-chat-unread-dot" />}
         </button>
+        <button className="hp-btn-secondary" onClick={() => window.open(`/meeting/${code}`, '_blank')}>Stage View</button>
         <button className="hp-btn-secondary" onClick={onPresent}>Present</button>
         <button className="hp-btn-danger" onClick={onClose}>End Event</button>
       </div>
@@ -91,9 +92,20 @@ export default function HostPanelPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastText, setBroadcastText] = useState('');
+  const [broadcasting, setBroadcasting] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatDmPeerId, setChatDmPeerId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const unreadDms = useUnreadDms();
+  const unreadGlobal = useUnreadGlobal();
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchTerm(searchInput), 200);
@@ -103,9 +115,23 @@ export default function HostPanelPage() {
   useEffect(() => {
     if (code && client.connectionStatus === 'disconnected' && state.phase === 'idle') {
       client.connect().then(() => {
-        const peerId = sessionStorage.getItem('meetmesh_peer_id') || uuid();
-        const lastName = sessionStorage.getItem('meetmesh_last_name') || 'Host';
-        const lastJson = sessionStorage.getItem('meetmesh_last_profile_json') || '{}';
+        const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${code}`);
+        const peerId = sessionStorage.getItem('meetmesh_peer_id')
+          || hostPeerForRoom
+          || localStorage.getItem('meetmesh_peer_id')
+          || uuid();
+        const lastName = sessionStorage.getItem('meetmesh_last_name')
+          || localStorage.getItem('meetmesh_last_name')
+          || 'Host';
+        const lastJson = sessionStorage.getItem('meetmesh_last_profile_json')
+          || localStorage.getItem('meetmesh_last_profile_json')
+          || '{}';
+
+        sessionStorage.setItem('meetmesh_peer_id', peerId);
+        sessionStorage.setItem('meetmesh_is_host', 'true');
+        sessionStorage.setItem('meetmesh_last_name', lastName);
+        sessionStorage.setItem('meetmesh_last_profile_json', lastJson);
+
         client.joinMeeting(code, lastName, peerId, lastJson).catch(console.error);
       }).catch(console.error);
     }
@@ -153,6 +179,7 @@ export default function HostPanelPage() {
   const hasUnreadDms = state.selfPeerId
     ? [...unreadDms].some(key => key.split('|').includes(state.selfPeerId!))
     : false;
+  const hasUnread = unreadGlobal > 0 || hasUnreadDms;
 
   const roleCounts = useMemo(() =>
     participants.reduce<Record<string, number>>((acc, p) => {
@@ -175,10 +202,10 @@ export default function HostPanelPage() {
         onClose={close}
         onChat={() => { setShowChat(v => !v); if (showChat) setChatDmPeerId(null); }}
         chatActive={showChat}
-        chatHasUnread={hasUnreadDms}
+        chatHasUnread={hasUnread}
       />
 
-      <div className="hp-grid" style={{ marginRight: showChat ? 320 : 0 }}>
+      <div className="hp-grid" style={{ marginRight: (showChat && !isMobile) ? 320 : 0 }}>
         <aside className="hp-sidebar">
           <div className="hp-code-card">
             <div className="hp-code-block">
@@ -201,6 +228,33 @@ export default function HostPanelPage() {
               <QRCodeSVG value={joinUrl} size={46} bgColor="#ffffff" fgColor="#000000" level="M" />
             </div>
           </div>
+
+          <button
+            type="button"
+            className="hp-broadcast-btn"
+            onClick={() => setShowBroadcastModal(true)}
+            style={{
+              width: '100%',
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: '8px',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              background: 'rgba(245, 158, 11, 0.12)',
+              color: '#f59e0b',
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <span>📢</span>
+            <span>Broadcast Announcement</span>
+          </button>
 
           <div className="hp-section">
             <div className="hp-section-head">
@@ -282,6 +336,7 @@ export default function HostPanelPage() {
       <AnimatePresence>
         {showChat && (
           <ChatPanel
+            meetingCode={code}
             selfPeerId={state.selfPeerId}
             selfName={selfName}
             selfAvatar={selfAvatar}
@@ -327,6 +382,111 @@ export default function HostPanelPage() {
         onConfirm={confirmClose}
         onCancel={() => setShowCloseConfirm(false)}
       />
+
+      {showBroadcastModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setShowBroadcastModal(false)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              background: '#12131a',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: 14,
+              padding: isMobile ? '20px 16px' : 24,
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 24 }}>📢</span>
+              <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', fontFamily: 'monospace' }}>
+                Broadcast Announcement
+              </h3>
+            </div>
+            <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
+              This alert will instantly pop up on every attendee's phone/screen with a notification chime.
+            </p>
+            <textarea
+              autoFocus
+              value={broadcastText}
+              onChange={e => setBroadcastText(e.target.value)}
+              placeholder="e.g. 🍕 Pizza is served! or ⚡ Lightning talks starting in 5 mins on Stage A."
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'rgba(255,255,255,0.05)',
+                color: '#fff',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                resize: 'none',
+                marginBottom: 16,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowBroadcastModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!broadcastText.trim() || broadcasting}
+                onClick={async () => {
+                  if (!broadcastText.trim() || !code) return;
+                  setBroadcasting(true);
+                  try {
+                    await client.sendAnnouncement(code, broadcastText.trim(), selfName);
+                    showSuccess('Announcement broadcasted!');
+                    setBroadcastText('');
+                    setShowBroadcastModal(false);
+                  } catch (e) {
+                    console.error(e);
+                  } finally {
+                    setBroadcasting(false);
+                  }
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: '#f59e0b',
+                  color: '#000',
+                  fontWeight: 600,
+                  cursor: broadcastText.trim() ? 'pointer' : 'not-allowed',
+                  opacity: broadcastText.trim() ? 1 : 0.5,
+                }}
+              >
+                {broadcasting ? 'Sending...' : '📢 Send to All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

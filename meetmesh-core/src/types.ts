@@ -16,6 +16,7 @@ export interface ParticipantProfile {
   github?: string;
   bio?: string;
   photo?: string; // base64 jpeg
+  tags?: string[];
 }
 
 export function parseProfile(json: string): ParticipantProfile | null {
@@ -29,6 +30,7 @@ export function parseProfile(json: string): ParticipantProfile | null {
       github: parsed.github,
       bio: parsed.bio,
       photo: parsed.photo,
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
     };
   } catch {
     return null;
@@ -44,12 +46,24 @@ export interface MeetingRoom {
   startedAt:    string;
   waitingRoomEnabled: boolean;
   participants: Record<string, Participant>;
+  messages?:    ChatMessage[];
 }
 
 export interface WaitingPeer {
   peerId:      string;
   displayName: string;
   joinedAt:    string;
+}
+
+export interface ChatMessage {
+  id: string;
+  meetingCode?: string;
+  peerId: string;
+  displayName: string;
+  text: string;
+  timestamp: string;
+  avatarUrl?: string;
+  toPeerId?: string;
 }
 
 // ── Hub payload types ────────────────────────────────────────────────────────

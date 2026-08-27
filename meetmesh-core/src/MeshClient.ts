@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { StateMachine } from './StateMachine.js';
-import type { ConnectionStatus, MeetingCreatedPayload } from './types.js';
+import type { ConnectionStatus, MeetingCreatedPayload, ChatMessage } from './types.js';
 
 type EventMap = {
   ConnectionStatusChanged: (status: ConnectionStatus) => void;
@@ -9,6 +9,13 @@ type EventMap = {
   Error:                   (payload: { code: string; detail: string }) => void;
   Kicked:                  (payload: { meetingCode: string }) => void;
   ReactionReceived:        (payload: { peerId: string; displayName: string; emoji: string; avatarUrl?: string }) => void;
+  ChatMessageReceived:     (payload: ChatMessage) => void;
+  DirectMessageReceived:   (payload: ChatMessage) => void;
+  ChatHistoryReceived:     (payload: ChatMessage[]) => void;
+  ParticipantAdmitted:     (payload: { meetingCode: string; peerId?: string }) => void;
+  ParticipantJoined:       (payload: { peerId: string; displayName: string; role: any; joinedAt: string; json: string }) => void;
+  ParticipantLeft:         (payload: { peerId: string }) => void;
+  AnnouncementReceived:    (payload: { id: string; message: string; timestamp: string; hostName: string }) => void;
 };
 
 export class MeshClient {
@@ -124,6 +131,18 @@ export class MeshClient {
     await this._invoke('send_reaction', { meetingCode, emoji });
   }
 
+  async sendChatMessage(meetingCode: string, text: string): Promise<void> {
+    await this._invoke('send_chat_message', { meetingCode, text });
+  }
+
+  async sendDirectMessage(meetingCode: string, toPeerId: string, text: string): Promise<void> {
+    await this._invoke('send_direct_message', { meetingCode, toPeerId, text });
+  }
+
+  async sendAnnouncement(meetingCode: string, message: string, hostName?: string): Promise<void> {
+    await this._invoke('send_announcement', { meetingCode, message, hostName });
+  }
+
   // ── Event emitter ─────────────────────────────────────────────────────────
 
   on<K extends keyof EventMap>(event: K, handler: EventMap[K]): void {
@@ -141,9 +160,20 @@ export class MeshClient {
     const s = this._socket;
 
     // Server → state machine (same event names as SignalR — no page changes needed)
-    s.on('FullState',           p => this._machine.apply({ type: 'FullState',           payload: p }));
-    s.on('ParticipantJoined',   p => this._machine.apply({ type: 'ParticipantJoined',   payload: p }));
-    s.on('ParticipantLeft',     p => this._machine.apply({ type: 'ParticipantLeft',     payload: p }));
+    s.on('FullState',           p => {
+      this._machine.apply({ type: 'FullState', payload: p });
+      if (p.messages && Array.isArray(p.messages)) {
+        this._emit('ChatHistoryReceived', p.messages);
+      }
+    });
+    s.on('ParticipantJoined',   p => {
+      this._machine.apply({ type: 'ParticipantJoined', payload: p });
+      this._emit('ParticipantJoined', p);
+    });
+    s.on('ParticipantLeft',     p => {
+      this._machine.apply({ type: 'ParticipantLeft', payload: p });
+      this._emit('ParticipantLeft', p);
+    });
     s.on('RoleChanged',         p => this._machine.apply({ type: 'RoleChanged',         payload: p }));
     s.on('MetadataUpdated',     p => this._machine.apply({ type: 'MetadataUpdated',     payload: p }));
     s.on('HostChanged',         p => this._machine.apply({ type: 'HostChanged',         payload: p }));
@@ -162,6 +192,14 @@ export class MeshClient {
 
     s.on('Kicked',        p  => this._emit('Kicked', p));
     s.on('ReactionReceived', p => this._emit('ReactionReceived', p));
+    s.on('ChatMessageReceived', p => this._emit('ChatMessageReceived', p));
+    s.on('DirectMessageReceived', p => this._emit('DirectMessageReceived', p));
+    s.on('AnnouncementReceived', p => this._emit('AnnouncementReceived', p));
+    s.on('ChatHistory', p => this._emit('ChatHistoryReceived', p));
+    s.on('ParticipantAdmitted', p => {
+      this._machine.apply({ type: 'ParticipantAdmitted' });
+      this._emit('ParticipantAdmitted', p);
+    });
     s.on('HeartbeatAck',  () => { /* latency measured on emit side */ });
     s.on('Error',         (p: { code: string; detail: string }) => {
       if (p.code === 'RATE_LIMITED') this._emit('RateLimited', p.detail);

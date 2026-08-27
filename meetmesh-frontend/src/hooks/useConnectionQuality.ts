@@ -31,7 +31,8 @@ export function useConnectionQuality(): ConnectionQuality {
     const checkLatency = async () => {
       try {
         const before = Date.now();
-        await client.heartbeat('');
+        const meetingCode = client.state.room?.meetingCode || '';
+        await client.heartbeat(meetingCode);
         const after = Date.now();
         setLatencyMs(after - before);
       } catch {

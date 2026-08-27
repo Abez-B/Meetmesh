@@ -3,6 +3,7 @@ import { Server, type Socket } from "socket.io";
 import { createServer, type Server as HTTPServer } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../lib/logger";
+import { storage } from "../services/storage";
 
 interface Participant {
   peerId: string;
@@ -24,13 +25,82 @@ interface Meeting {
   participants: Map<string, Participant>;
   waitingRoom: boolean;
   createdAt: number;
+  messages: ChatMessage[];
   /** Timer handle for auto-expiry when all participants leave */
   expiryTimer?: ReturnType<typeof setTimeout>;
+}
+
+export interface ChatMessage {
+  id: string;
+  meetingCode: string;
+  peerId: string;
+  displayName: string;
+  text: string;
+  timestamp: string;
+  avatarUrl?: string;
+  toPeerId?: string;
+}
+
+export interface WaitingPeer {
+  peerId: string;
+  displayName: string;
+  joinedAt: string;
+}
+
+function getWaitingPeers(meeting: Meeting): WaitingPeer[] {
+  const list: WaitingPeer[] = [];
+  for (const p of meeting.participants.values()) {
+    if (!p.isAdmitted) {
+      list.push({
+        peerId: p.peerId,
+        displayName: p.displayName,
+        joinedAt: p.joinedAt,
+      });
+    }
+  }
+  return list;
 }
 
 const meetings        = new Map<string, Meeting>();
 const peerToMeeting   = new Map<string, string>();
 const peerToParticipant = new Map<string, Participant>();
+
+// Restore meetings from persistent storage on startup
+storage.loadMeetings().then((restored) => {
+  for (const item of restored) {
+    const participantsMap = new Map<string, Participant>();
+    for (const p of item.participants) {
+      participantsMap.set(p.peerId, {
+        peerId: p.peerId,
+        displayName: p.displayName,
+        connectionId: '',
+        role: p.role,
+        isAdmitted: p.isAdmitted,
+        joinedAt: p.joinedAt,
+        json: p.json,
+        lastHeartbeat: Date.now(),
+      });
+      peerToMeeting.set(p.peerId, item.code);
+    }
+
+    meetings.set(item.code, {
+      code: item.code,
+      eventName: item.eventName,
+      subtitle: item.subtitle,
+      description: item.description,
+      hostPeerId: item.hostPeerId,
+      participants: participantsMap,
+      waitingRoom: item.waitingRoom,
+      createdAt: item.createdAt,
+      messages: item.messages || [],
+    });
+  }
+  if (restored.length > 0) {
+    logger.info({ restored: restored.length }, "Meetings restored from database/storage");
+  }
+}).catch((err) => {
+  logger.error({ err }, "Error restoring meetings from storage");
+});
 
 // ── Rate limiting — joins per IP ───────────────────────────────────────────
 const joinRateMap = new Map<string, { count: number; resetAt: number }>();
@@ -50,7 +120,7 @@ function checkJoinRateLimit(ip: string): boolean {
 }
 
 // ── Heartbeat config ───────────────────────────────────────────────────────
-const HEARTBEAT_TIMEOUT_MS = 45_000; // kick after 45s without heartbeat
+const HEARTBEAT_TIMEOUT_MS = 120_000; // kick after 2 minutes without heartbeat
 
 // ── Meeting expiry ─────────────────────────────────────────────────────────
 const EMPTY_MEETING_TTL_MS = 30 * 60_000; // 30 minutes
@@ -66,8 +136,13 @@ function scheduleExpiryIfEmpty(meeting: Meeting, io: Server) {
   }, EMPTY_MEETING_TTL_MS);
 }
 
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function generateCode(): string {
-  return Math.random().toString(36).substring(2, 6).toUpperCase();
+  let result = "";
+  for (let i = 0; i < 4; i++) {
+    result += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  }
+  return result;
 }
 
 export function setupSocketIO(server: HTTPServer) {
@@ -83,6 +158,9 @@ export function setupSocketIO(server: HTTPServer) {
     const now = Date.now();
     for (const [code, meeting] of meetings) {
       for (const [peerId, participant] of meeting.participants) {
+        // Never kick the meeting host due to idle or heartbeat delay
+        if (peerId === meeting.hostPeerId) continue;
+
         if (now - participant.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
           logger.info({ peerId, code }, "Kicking participant: heartbeat timeout");
           const targetSocket = io.sockets.sockets.get(participant.connectionId);
@@ -128,6 +206,7 @@ export function setupSocketIO(server: HTTPServer) {
           participants: new Map(),
           waitingRoom: false,
           createdAt: Date.now(),
+          messages: [],
         };
 
         const host: Participant = {
@@ -147,6 +226,7 @@ export function setupSocketIO(server: HTTPServer) {
         peerToParticipant.set(data.peerId, host);
 
         socket.join(code);
+        socket.join(`peer:${data.peerId}`);
         socket.data = { meetingCode: code, peerId: data.peerId };
 
         socket.emit("MeetingCreated", { meetingCode: code, hostSecret });
@@ -155,7 +235,10 @@ export function setupSocketIO(server: HTTPServer) {
           eventName: data.eventName,
           hostPeerId: data.peerId,
           participants: { [data.peerId]: host },
+          messages: [],
         });
+
+        storage.scheduleSave(meetings);
 
         if (callback) callback();
       } catch (error: any) {
@@ -195,6 +278,7 @@ export function setupSocketIO(server: HTTPServer) {
           peerToParticipant.set(data.peerId, existingParticipant);
 
           socket.join(code);
+          socket.join(`peer:${data.peerId}`);
           socket.data = { meetingCode: code, peerId: data.peerId };
 
           // Send full state to reconnecting participant
@@ -202,10 +286,21 @@ export function setupSocketIO(server: HTTPServer) {
             meetingCode: code,
             eventName: meeting.eventName,
             hostPeerId: meeting.hostPeerId,
+            waitingRoomEnabled: meeting.waitingRoom,
             participants: Object.fromEntries(meeting.participants),
+            messages: meeting.messages,
           });
-          // Notify others that this peer is back (reuse ParticipantJoined)
-          socket.to(code).emit("ParticipantJoined", existingParticipant);
+
+          if (!existingParticipant.isAdmitted) {
+            socket.emit("WaitingForAdmission", { meetingCode: code });
+          } else {
+            // Notify others that this peer is back (reuse ParticipantJoined)
+            socket.to(code).emit("ParticipantJoined", existingParticipant);
+          }
+
+          if (existingParticipant.role === 'Host' || existingParticipant.role === 'Organizer') {
+            socket.emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+          }
 
           if (callback) callback();
           return;
@@ -231,12 +326,14 @@ export function setupSocketIO(server: HTTPServer) {
           role = "Host";
         }
 
+        const isAdmitted = !meeting.waitingRoom || role !== "Attendee";
+
         const participant: Participant = {
           peerId: data.peerId,
           displayName: data.displayName,
           connectionId: socket.id,
           role,
-          isAdmitted: true,
+          isAdmitted,
           joinedAt: new Date().toISOString(),
           json: data.profileJson || "{}",
           lastHeartbeat: Date.now(),
@@ -247,16 +344,30 @@ export function setupSocketIO(server: HTTPServer) {
         peerToParticipant.set(data.peerId, participant);
 
         socket.join(code);
+        socket.join(`peer:${data.peerId}`);
         socket.data = { meetingCode: code, peerId: data.peerId };
 
         socket.emit("FullState", {
           meetingCode: code,
           eventName: meeting.eventName,
           hostPeerId: meeting.hostPeerId,
+          waitingRoomEnabled: meeting.waitingRoom,
           participants: Object.fromEntries(meeting.participants),
+          messages: meeting.messages,
         });
 
-        socket.to(code).emit("ParticipantJoined", participant);
+        if (!isAdmitted) {
+          socket.emit("WaitingForAdmission", { meetingCode: code });
+          io.to(code).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+        } else {
+          socket.to(code).emit("ParticipantJoined", participant);
+        }
+
+        if (role === 'Host') {
+          socket.emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+        }
+
+        storage.scheduleSave(meetings);
 
         if (callback) callback();
       } catch (error: any) {
@@ -265,9 +376,55 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("admit_participant", (data: { meetingCode: string; peerId: string }, callback?: () => void) => {
-      // TODO: waiting room admission
-      if (callback) callback();
+    socket.on("admit_participant", (data: { meetingCode: string; peerId: string }, callback?: (err?: any) => void) => {
+      try {
+        const code = data.meetingCode?.toUpperCase();
+        const meeting = meetings.get(code);
+
+        if (!meeting) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
+          return;
+        }
+
+        // Authorization check: Only Host or Organizer can admit participants
+        const callerPeerId = socket.data?.peerId;
+        const caller = meeting.participants.get(callerPeerId);
+        if (!caller || (caller.role !== 'Host' && caller.role !== 'Organizer')) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only host or organizer can admit participants" });
+          return;
+        }
+
+        const participant = meeting.participants.get(data.peerId);
+        if (!participant) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Participant not found in meeting" });
+          return;
+        }
+
+        participant.isAdmitted = true;
+
+        const targetSocket = io.sockets.sockets.get(participant.connectionId);
+        if (targetSocket) {
+          targetSocket.emit("ParticipantAdmitted", { meetingCode: code, peerId: data.peerId });
+          targetSocket.emit("FullState", {
+            meetingCode: code,
+            eventName: meeting.eventName,
+            hostPeerId: meeting.hostPeerId,
+            waitingRoomEnabled: meeting.waitingRoom,
+            participants: Object.fromEntries(meeting.participants),
+            messages: meeting.messages,
+          });
+        }
+
+        io.to(code).emit("ParticipantJoined", participant);
+        io.to(code).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+
+        storage.scheduleSave(meetings);
+
+        if (callback) callback();
+      } catch (error: any) {
+        logger.error({ error }, "Error admitting participant:");
+        if (callback) callback({ code: "ERROR", detail: error.message });
+      }
     });
 
     socket.on("kick_participant", (data: { meetingCode: string; peerId: string }, callback?: (err?: any) => void) => {
@@ -277,6 +434,20 @@ export function setupSocketIO(server: HTTPServer) {
 
         if (!meeting || !meeting.participants.has(data.peerId)) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Participant not found" });
+          return;
+        }
+
+        // Authorization check: Only Host or Organizer can kick
+        const callerPeerId = socket.data?.peerId;
+        const caller = meeting.participants.get(callerPeerId);
+        if (!caller || (caller.role !== 'Host' && caller.role !== 'Organizer')) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only host or organizer can kick participants" });
+          return;
+        }
+
+        // Prevent kicking the meeting host
+        if (data.peerId === meeting.hostPeerId) {
+          if (callback) callback({ code: "FORBIDDEN", detail: "Cannot kick the meeting host" });
           return;
         }
 
@@ -291,7 +462,9 @@ export function setupSocketIO(server: HTTPServer) {
           peerToMeeting.delete(data.peerId);
           peerToParticipant.delete(data.peerId);
           io.to(code).emit("ParticipantLeft", { peerId: data.peerId });
+          io.to(code).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
           scheduleExpiryIfEmpty(meeting, io);
+          storage.scheduleSave(meetings);
         }
 
         if (callback) callback();
@@ -311,10 +484,18 @@ export function setupSocketIO(server: HTTPServer) {
           return;
         }
 
+        // Authorization check: Only the Host can change roles
+        const callerPeerId = socket.data?.peerId;
+        if (callerPeerId !== meeting.hostPeerId) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only the host can change participant roles" });
+          return;
+        }
+
         const participant = meeting.participants.get(data.peerId);
         if (participant) {
           participant.role = data.newRole as any;
           io.to(code).emit("RoleChanged", { peerId: data.peerId, role: data.newRole });
+          storage.scheduleSave(meetings);
         }
 
         if (callback) callback();
@@ -334,8 +515,17 @@ export function setupSocketIO(server: HTTPServer) {
           return;
         }
 
+        // Authorization check: Only the Host can toggle waiting room
+        const callerPeerId = socket.data?.peerId;
+        if (callerPeerId !== meeting.hostPeerId) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only the host can toggle the waiting room" });
+          return;
+        }
+
         meeting.waitingRoom = data.isEnabled;
         io.to(code).emit("WaitingRoomToggled", { meetingCode: code, isEnabled: data.isEnabled });
+        io.to(code).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+        storage.scheduleSave(meetings);
 
         if (callback) callback();
       } catch (error: any) {
@@ -345,18 +535,29 @@ export function setupSocketIO(server: HTTPServer) {
     });
 
     socket.on("update_metadata", (data: { meetingCode: string; json: string }, callback?: () => void) => {
-      // TODO: implement metadata updates
+      const peerId = socket.data?.peerId;
+      const code = data.meetingCode?.toUpperCase() ?? socket.data?.meetingCode;
+      if (peerId && code) {
+        const meeting = meetings.get(code);
+        const participant = meeting?.participants.get(peerId);
+        if (participant) {
+          participant.json = data.json;
+          io.to(code).emit("MetadataUpdated", { peerId, json: data.json });
+          storage.scheduleSave(meetings);
+        }
+      }
       if (callback) callback();
     });
 
     socket.on("heartbeat", (data: { meetingCode: string }, callback?: () => void) => {
-      // Update the participant's last-seen timestamp
       const peerId = socket.data?.peerId;
       if (peerId) {
-        const code = data?.meetingCode?.toUpperCase() ?? socket.data?.meetingCode;
-        const meeting = meetings.get(code);
-        const participant = meeting?.participants.get(peerId);
-        if (participant) participant.lastHeartbeat = Date.now();
+        const code = (data?.meetingCode ? data.meetingCode.toUpperCase() : null) || socket.data?.meetingCode;
+        if (code) {
+          const meeting = meetings.get(code);
+          const participant = meeting?.participants.get(peerId);
+          if (participant) participant.lastHeartbeat = Date.now();
+        }
       }
       if (callback) callback();
     });
@@ -368,6 +569,13 @@ export function setupSocketIO(server: HTTPServer) {
 
         if (!meeting) {
           if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
+          return;
+        }
+
+        // Authorization check: Only the Host can close the meeting
+        const callerPeerId = socket.data?.peerId;
+        if (callerPeerId !== meeting.hostPeerId) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only the host can close the meeting" });
           return;
         }
 
@@ -383,6 +591,7 @@ export function setupSocketIO(server: HTTPServer) {
           peerToParticipant.delete(participant.peerId);
         });
         meetings.delete(code);
+        storage.scheduleSave(meetings);
 
         if (callback) callback();
       } catch (error: any) {
@@ -391,25 +600,195 @@ export function setupSocketIO(server: HTTPServer) {
       }
     });
 
-    socket.on("send_reaction", (data: { meetingCode: string; emoji: string }) => {
+    socket.on("send_reaction", (data: { meetingCode: string; emoji: string }, callback?: () => void) => {
       const peerId = socket.data?.peerId;
-      const meetingCode = data.meetingCode?.toUpperCase() ?? socket.data?.meetingCode;
-      if (peerId && meetingCode) {
-        const meeting = meetings.get(meetingCode);
-        const participant = meeting?.participants.get(peerId);
-        if (participant) {
-          let photo = "";
-          try {
-            const profile = JSON.parse(participant.json || "{}");
-            photo = profile.photo || "";
-          } catch {}
-          io.to(meetingCode).emit("ReactionReceived", {
-            peerId,
-            displayName: participant.displayName,
-            emoji: data.emoji,
-            avatarUrl: photo,
-          });
+      const meetingCode = (data?.meetingCode || socket.data?.meetingCode)?.toUpperCase();
+      if (!peerId || !meetingCode || !data?.emoji) {
+        if (callback) callback();
+        return;
+      }
+
+      const meeting = meetings.get(meetingCode);
+      const participant = meeting?.participants.get(peerId);
+      if (!participant) {
+        if (callback) callback();
+        return;
+      }
+
+      participant.lastHeartbeat = Date.now();
+
+      let avatarUrl: string | undefined;
+      try {
+        const profile = JSON.parse(participant.json || "{}");
+        if (profile.photo) avatarUrl = profile.photo;
+      } catch {}
+
+      io.to(meetingCode).emit("ReactionReceived", {
+        peerId,
+        displayName: participant.displayName,
+        emoji: data.emoji,
+        avatarUrl,
+      });
+
+      if (callback) callback();
+    });
+
+    socket.on("send_chat_message", (data: { meetingCode: string; text: string }, callback?: (res?: any) => void) => {
+      try {
+        const peerId = socket.data?.peerId;
+        const meetingCode = (data?.meetingCode || socket.data?.meetingCode)?.toUpperCase();
+        if (!peerId || !meetingCode) {
+          if (callback) callback({ code: "BAD_REQUEST", detail: "Missing peerId or meetingCode" });
+          return;
         }
+
+        const text = (data?.text || "").trim();
+        if (!text) {
+          if (callback) callback({ code: "EMPTY_TEXT", detail: "Message cannot be empty" });
+          return;
+        }
+
+        const cleanText = text.slice(0, 500);
+
+        const meeting = meetings.get(meetingCode);
+        if (!meeting) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
+          return;
+        }
+
+        const participant = meeting.participants.get(peerId);
+        if (!participant) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Participant not found in meeting" });
+          return;
+        }
+
+        participant.lastHeartbeat = Date.now();
+
+        let avatarUrl: string | undefined;
+        try {
+          const profile = JSON.parse(participant.json || "{}");
+          if (profile.photo) avatarUrl = profile.photo;
+        } catch {}
+
+        const chatMessage: ChatMessage = {
+          id: `${Date.now()}-${uuidv4().slice(0, 8)}`,
+          meetingCode,
+          peerId,
+          displayName: participant.displayName,
+          text: cleanText,
+          timestamp: new Date().toISOString(),
+          avatarUrl,
+        };
+
+        meeting.messages.push(chatMessage);
+        if (meeting.messages.length > 100) {
+          meeting.messages.shift();
+        }
+        storage.scheduleSave(meetings);
+
+        io.to(meetingCode).emit("ChatMessageReceived", chatMessage);
+        if (callback) callback({ status: "ok", message: chatMessage });
+      } catch (err: any) {
+        logger.error({ err }, "Error in send_chat_message");
+        if (callback) callback({ code: "ERROR", detail: err?.message });
+      }
+    });
+
+    socket.on("send_direct_message", (data: { meetingCode: string; toPeerId: string; text: string }, callback?: (res?: any) => void) => {
+      try {
+        const peerId = socket.data?.peerId;
+        const meetingCode = (data?.meetingCode || socket.data?.meetingCode)?.toUpperCase();
+        if (!peerId || !meetingCode || !data?.toPeerId) {
+          if (callback) callback({ code: "BAD_REQUEST", detail: "Missing required fields" });
+          return;
+        }
+
+        const text = (data?.text || "").trim();
+        if (!text) {
+          if (callback) callback({ code: "EMPTY_TEXT", detail: "Message cannot be empty" });
+          return;
+        }
+
+        const cleanText = text.slice(0, 500);
+
+        const meeting = meetings.get(meetingCode);
+        if (!meeting) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
+          return;
+        }
+
+        const sender = meeting.participants.get(peerId);
+        const recipient = meeting.participants.get(data.toPeerId);
+
+        if (!sender || !recipient) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Sender or recipient not in meeting" });
+          return;
+        }
+
+        sender.lastHeartbeat = Date.now();
+
+        let avatarUrl: string | undefined;
+        try {
+          const profile = JSON.parse(sender.json || "{}");
+          if (profile.photo) avatarUrl = profile.photo;
+        } catch {}
+
+        const chatMessage: ChatMessage = {
+          id: `${Date.now()}-${uuidv4().slice(0, 8)}`,
+          meetingCode,
+          peerId,
+          displayName: sender.displayName,
+          text: cleanText,
+          timestamp: new Date().toISOString(),
+          avatarUrl,
+          toPeerId: data.toPeerId,
+        };
+
+        // Dispatch to recipient and echo back to sender
+        io.to(`peer:${data.toPeerId}`).emit("DirectMessageReceived", chatMessage);
+        if (data.toPeerId !== peerId) {
+          socket.emit("DirectMessageReceived", chatMessage);
+        }
+
+        if (callback) callback({ status: "ok", message: chatMessage });
+      } catch (err: any) {
+        logger.error({ err }, "Error in send_direct_message");
+        if (callback) callback({ code: "ERROR", detail: err?.message });
+      }
+    });
+
+    socket.on("send_announcement", (data: { meetingCode: string; message: string; hostName?: string }, callback?: (res?: any) => void) => {
+      try {
+        const meetingCode = (data?.meetingCode || socket.data?.meetingCode)?.toUpperCase();
+        const peerId = socket.data?.peerId;
+        if (!meetingCode || !data?.message) {
+          if (callback) callback({ code: "BAD_REQUEST", detail: "Missing meetingCode or message" });
+          return;
+        }
+
+        const meeting = meetings.get(meetingCode);
+        if (!meeting) {
+          if (callback) callback({ code: "NOT_FOUND", detail: "Meeting not found" });
+          return;
+        }
+
+        if (peerId !== meeting.hostPeerId && !socket.data?.isHost) {
+          if (callback) callback({ code: "UNAUTHORIZED", detail: "Only the host can broadcast announcements" });
+          return;
+        }
+
+        const payload = {
+          id: uuidv4(),
+          message: data.message.trim(),
+          timestamp: new Date().toISOString(),
+          hostName: data.hostName || "Host",
+        };
+
+        io.to(meetingCode).emit("AnnouncementReceived", payload);
+        if (callback) callback({ status: "ok", announcement: payload });
+      } catch (err: any) {
+        logger.error({ err }, "Error in send_announcement");
+        if (callback) callback({ code: "ERROR", detail: err?.message });
       }
     });
 
@@ -422,12 +801,22 @@ export function setupSocketIO(server: HTTPServer) {
       if (meetingCode && peerId) {
         const meeting = meetings.get(meetingCode);
         if (meeting) {
-          meeting.participants.delete(peerId);
-          io.to(meetingCode).emit("ParticipantLeft", { peerId });
-          scheduleExpiryIfEmpty(meeting, io);
+          const participant = meeting.participants.get(peerId);
+          if (participant && participant.connectionId === socket.id) {
+            setTimeout(() => {
+              const current = meeting.participants.get(peerId);
+              if (current && current.connectionId === socket.id) {
+                meeting.participants.delete(peerId);
+                peerToMeeting.delete(peerId);
+                peerToParticipant.delete(peerId);
+                io.to(meetingCode).emit("ParticipantLeft", { peerId });
+                io.to(meetingCode).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
+                scheduleExpiryIfEmpty(meeting, io);
+                storage.scheduleSave(meetings);
+              }
+            }, 5000);
+          }
         }
-        peerToMeeting.delete(peerId);
-        peerToParticipant.delete(peerId);
       }
     });
   });

@@ -7,6 +7,7 @@ out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+.data/
 
 # dependencies
 node_modules
@@ -55,3 +56,7 @@ Thumbs.db
 .cache/
 .local/
 .aider*
+
+# Experimental prototypes
+meetmesh-svelte/
+

@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import type { Participant } from 'meetmesh-core';
 import { parseProfile } from 'meetmesh-core';
 import { chatStore, useChat, useDmChat, useUnreadDms, scheduleMockReply } from '../mock/chatStore';
+import { useMeshClient } from '../hooks/useMeshClient';
 
 const IS_MOCK = import.meta.env.VITE_MOCK_MODE === 'true';
 
 interface ChatPanelProps {
+  meetingCode?: string;
   selfPeerId: string | null;
   selfName: string;
   selfAvatar?: string;
@@ -21,10 +23,11 @@ function formatTime(iso: string): string {
 }
 
 // ── Global chat thread ───────────────────────────────────────────────────────
-function GlobalThread({ selfPeerId, selfName, selfAvatar }: {
-  selfPeerId: string; selfName: string; selfAvatar?: string;
+function GlobalThread({ meetingCode, selfPeerId, selfName, selfAvatar }: {
+  meetingCode?: string; selfPeerId: string; selfName: string; selfAvatar?: string;
 }) {
   const { messages, send } = useChat();
+  const client = useMeshClient();
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
@@ -32,16 +35,25 @@ function GlobalThread({ selfPeerId, selfName, selfAvatar }: {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    send({
-      peerId:      selfPeerId,
-      displayName: selfName || 'You',
-      text,
-      avatarUrl: selfAvatar ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${selfPeerId}`,
-    });
     setDraft('');
+
+    if (IS_MOCK || !meetingCode) {
+      send({
+        peerId:      selfPeerId,
+        displayName: selfName || 'You',
+        text,
+        avatarUrl: selfAvatar ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${selfPeerId}`,
+      });
+    } else {
+      try {
+        await client.sendChatMessage(meetingCode, text);
+      } catch (err) {
+        console.error('Failed to send global chat message:', err);
+      }
+    }
   };
 
   return (
@@ -88,11 +100,12 @@ function GlobalThread({ selfPeerId, selfName, selfAvatar }: {
 }
 
 // ── Single DM thread ─────────────────────────────────────────────────────────
-function DmThread({ selfPeerId, selfName, selfAvatar, other, onBack }: {
-  selfPeerId: string; selfName: string; selfAvatar?: string;
+function DmThread({ meetingCode, selfPeerId, selfName, selfAvatar, other, onBack }: {
+  meetingCode?: string; selfPeerId: string; selfName: string; selfAvatar?: string;
   other: Participant; onBack: () => void;
 }) {
   const messages   = useDmChat(selfPeerId, other.peerId);
+  const client     = useMeshClient();
   const [draft, setDraft] = useState('');
   const bottomRef  = useRef<HTMLDivElement>(null);
   const inputRef   = useRef<HTMLInputElement>(null);
@@ -102,18 +115,27 @@ function DmThread({ selfPeerId, selfName, selfAvatar, other, onBack }: {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    chatStore.postDm(selfPeerId, other.peerId, {
-      peerId:      selfPeerId,
-      displayName: selfName,
-      text,
-      avatarUrl: selfAvatar ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${selfPeerId}`,
-    });
     setDraft('');
-    if (IS_MOCK) {
-      scheduleMockReply(other, selfPeerId, 1800 + Math.random() * 3500);
+
+    if (IS_MOCK || !meetingCode) {
+      chatStore.postDm(selfPeerId, other.peerId, {
+        peerId:      selfPeerId,
+        displayName: selfName,
+        text,
+        avatarUrl: selfAvatar ?? `https://api.dicebear.com/7.x/thumbs/svg?seed=${selfPeerId}`,
+      });
+      if (IS_MOCK) {
+        scheduleMockReply(other, selfPeerId, 1800 + Math.random() * 3500);
+      }
+    } else {
+      try {
+        await client.sendDirectMessage(meetingCode, other.peerId, text);
+      } catch (err) {
+        console.error('Failed to send direct message:', err);
+      }
     }
   };
 
@@ -211,8 +233,8 @@ function DmList({ selfPeerId, participants, unread, onSelect }: {
   );
 }
 
-// ── Main ChatPanel ────────────────────────────────────────────────────────────
 export function ChatPanel({
+  meetingCode,
   selfPeerId,
   selfName,
   selfAvatar,
@@ -230,11 +252,28 @@ export function ChatPanel({
     : false;
 
   useEffect(() => {
+    chatStore.setChatOpen(true);
+    return () => {
+      chatStore.setChatOpen(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'global') {
+      chatStore.setChatOpen(true);
+    }
+  }, [tab]);
+
+  useEffect(() => {
     if (initialDmPeerId) {
       const p = participants.find(pp => pp.peerId === initialDmPeerId);
-      if (p) { setActiveDm(p); setTab('dms'); }
+      if (p) {
+        setActiveDm(p);
+        setTab('dms');
+        if (selfPeerId) chatStore.markDmRead(selfPeerId, p.peerId);
+      }
     }
-  }, [initialDmPeerId, participants]);
+  }, [initialDmPeerId, participants, selfPeerId]);
 
   return (
     <motion.div
@@ -269,12 +308,18 @@ export function ChatPanel({
       </div>
 
       {tab === 'global' && selfPeerId && (
-        <GlobalThread selfPeerId={selfPeerId} selfName={selfName} selfAvatar={selfAvatar} />
+        <GlobalThread
+          meetingCode={meetingCode}
+          selfPeerId={selfPeerId}
+          selfName={selfName}
+          selfAvatar={selfAvatar}
+        />
       )}
 
       {tab === 'dms' && selfPeerId && (
         activeDm ? (
           <DmThread
+            meetingCode={meetingCode}
             selfPeerId={selfPeerId}
             selfName={selfName}
             selfAvatar={selfAvatar}
@@ -286,7 +331,10 @@ export function ChatPanel({
             selfPeerId={selfPeerId}
             participants={participants}
             unread={unread}
-            onSelect={setActiveDm}
+            onSelect={(p) => {
+              setActiveDm(p);
+              if (selfPeerId) chatStore.markDmRead(selfPeerId, p.peerId);
+            }}
           />
         )
       )}

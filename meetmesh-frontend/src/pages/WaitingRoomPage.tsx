@@ -6,7 +6,7 @@ import { useMeshClient }   from '../hooks/useMeshClient';
 import { WaitingList }      from '../components/WaitingList';
 import { MeetingCodeCard }  from '../components/MeetingCodeCard';
 import { ConnectionDot }    from '../components/ConnectionDot';
-import { Logo }             from '../components/Logo';
+import { FloatingNavbar }   from '../components/FloatingNavbar';
 import { MeshBackground }   from '../components/MeshBackground';
 import '../meetmesh-upgraded.css';
 
@@ -37,16 +37,7 @@ export default function WaitingRoomPage() {
   if (!isHost) {
     return (
       <div className="wr-root">
-        <nav className="wr-nav">
-          <div className="wr-nav-brand">
-            <Logo size={24} />
-            <span className="wr-nav-name">MeetMesh</span>
-          </div>
-          <div className="wr-nav-dot-wrap">
-            <div className="wr-pulse" />
-            <span>Relay online</span>
-          </div>
-        </nav>
+        <FloatingNavbar variant="waiting" meetingCode={state.room?.meetingCode || window.location.pathname.split('/')[2]} />
 
         <div className="wr-lobby">
           <MeshBackground />
@@ -84,16 +75,7 @@ export default function WaitingRoomPage() {
 
   return (
     <div className="wr-root">
-      <nav className="wr-nav">
-        <div className="wr-nav-brand">
-          <Logo size={24} />
-          <span className="wr-nav-name">MeetMesh</span>
-        </div>
-        <div className="wr-nav-dot-wrap">
-          <div className="wr-pulse" />
-          <span>Live</span>
-        </div>
-      </nav>
+      <FloatingNavbar variant="waiting" meetingCode={state.room?.meetingCode || window.location.pathname.split('/')[2]} />
 
       <motion.div
         className="wr-host"

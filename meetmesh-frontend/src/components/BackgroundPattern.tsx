@@ -1,31 +1,61 @@
+import { GridPattern } from './GridPattern';
 
 export function BackgroundPattern() {
   return (
-    <div className="pattern-container">
-      <div className="pattern-bg">
-        <svg preserveAspectRatio="xMidYMid slice" height="100%" width="100%" className="cube-svg" viewBox="0 0 120 104">
-          <defs>
-            <linearGradient y2="100%" x2="100%" y1="0%" x1="0%" id="cube-dark">
-              <stop stopColor="#232526" offset="0%" />
-              <stop stopColor="#414345" offset="100%" />
-            </linearGradient>
-            <linearGradient y2="0%" x2="100%" y1="100%" x1="0%" id="cube-mid">
-              <stop stopColor="#4b6cb7" offset="0%" />
-              <stop stopColor="#182848" offset="100%" />
-            </linearGradient>
-            <linearGradient y2="100%" x2="0%" y1="0%" x1="100%" id="cube-light">
-              <stop stopColor="#a8edea" offset="0%" />
-              <stop stopColor="#fed6e3" offset="100%" />
-            </linearGradient>
-          </defs>
-          {/* Missing pure geometry from user prompt, injecting standard cube isometric paths so the gradients show up */}
-          <g>
-            <path d="M60 104L0 69.3V0h120v69.3z" fill="url(#cube-dark)" />
-            <path d="M60 104L0 69.3V34.6l60 34.7l60-34.7v34.7z" fill="url(#cube-mid)" />
-            <path d="M60 69.3L0 34.6L60 0l60 34.6z" fill="url(#cube-light)" />
-          </g>
-        </svg>
-      </div>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100vh',
+        pointerEvents: 'none',
+        zIndex: 0,
+        overflow: 'hidden',
+        backgroundColor: '#06070d',
+      }}
+      aria-hidden="true"
+    >
+      <GridPattern
+        width={40}
+        height={40}
+        squares={[
+          [4, 4],
+          [5, 1],
+          [8, 2],
+          [6, 6],
+          [10, 5],
+          [13, 3],
+          [3, 8],
+          [7, 12],
+          [12, 9],
+          [16, 4],
+          [18, 11],
+          [22, 6],
+          [9, 16],
+          [14, 18],
+          [20, 14],
+          [25, 8],
+          [5, 19],
+          [11, 22],
+          [17, 21],
+          [23, 17],
+        ]}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '-30%',
+          width: '100%',
+          height: '200%',
+          transform: 'skewY(12deg)',
+          maskImage: 'radial-gradient(ellipse 900px 700px at 50% 35%, #000 0%, rgba(0,0,0,0.4) 65%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 900px 700px at 50% 35%, #000 0%, rgba(0,0,0,0.4) 65%, transparent 100%)',
+        }}
+        fillColor="rgb(156 163 175 / 0.3)"
+        strokeColor="rgba(156, 163, 175, 0.18)"
+      />
     </div>
   );
 }
+
+export default BackgroundPattern;

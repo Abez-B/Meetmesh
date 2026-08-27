@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react';
-import type { Participant } from 'meetmesh-core';
+import type { Participant, ChatMessage } from 'meetmesh-core';
 
-export interface ChatMessage {
-  id: string;
-  peerId: string;
-  displayName: string;
-  text: string;
-  timestamp: string;
-  avatarUrl?: string;
-}
+export type { ChatMessage };
 
 type Listener<T> = (val: T) => void;
 
@@ -23,17 +16,71 @@ class ChatStore {
   private _dmListeners     = new Map<string, Array<Listener<ChatMessage[]>>>();
   private _unreadDms       = new Set<string>();
   private _unreadListeners : Array<Listener<Set<string>>> = [];
+  private _unreadGlobalCount = 0;
+  private _unreadGlobalListeners: Array<Listener<number>> = [];
+  private _isChatOpen = false;
 
   get globalMessages() { return this._global; }
   get unreadDms()      { return this._unreadDms; }
+  get unreadGlobalCount() { return this._unreadGlobalCount; }
 
   getDmMessages(a: string, b: string): ChatMessage[] {
     return this._dms.get(convKey(a, b)) ?? [];
   }
 
-  seedGlobal(messages: ChatMessage[]) {
-    this._global = messages;
+  setChatOpen(isOpen: boolean) {
+    this._isChatOpen = isOpen;
+    if (isOpen) {
+      this._unreadGlobalCount = 0;
+      this._notifyUnreadGlobal();
+    }
+  }
+
+  handleIncomingGlobal(msg: ChatMessage, selfPeerId?: string | null) {
+    if (this._global.some(m => m.id === msg.id)) return;
+    this._global = [...this._global, msg];
+    if (selfPeerId && msg.peerId !== selfPeerId && !this._isChatOpen) {
+      this._unreadGlobalCount++;
+      this._notifyUnreadGlobal();
+    }
     this._notifyGlobal();
+  }
+
+  handleIncomingDm(msg: ChatMessage, selfPeerId?: string | null) {
+    const targetPeer = msg.toPeerId || ((msg.peerId === selfPeerId) ? '' : msg.peerId);
+    if (!targetPeer) return;
+    const key = convKey(msg.peerId, targetPeer);
+    const msgs = this._dms.get(key) ?? [];
+    if (msgs.some(m => m.id === msg.id)) return;
+    this._dms.set(key, [...msgs, msg]);
+    this._notifyDm(key);
+    if (selfPeerId && msg.peerId !== selfPeerId) {
+      this._unreadDms = new Set(this._unreadDms).add(key);
+      this._notifyUnread();
+    }
+  }
+
+  seedGlobal(messages: ChatMessage[]) {
+    const globalList: ChatMessage[] = [];
+    for (const m of messages) {
+      if (m.toPeerId) {
+        const key = convKey(m.peerId, m.toPeerId);
+        const existing = this._dms.get(key) ?? [];
+        if (!existing.some(x => x.id === m.id)) {
+          this._dms.set(key, [...existing, m]);
+        }
+      } else {
+        globalList.push(m);
+      }
+    }
+    const map = new Map<string, ChatMessage>();
+    for (const m of this._global) map.set(m.id, m);
+    for (const m of globalList) map.set(m.id, m);
+    this._global = Array.from(map.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    this._notifyGlobal();
+    this._dms.forEach((_, k) => this._notifyDm(k));
   }
 
   subscribeGlobal(fn: Listener<ChatMessage[]>): () => void {
@@ -57,6 +104,12 @@ class ChatStore {
     this._unreadListeners.push(fn);
     fn(this._unreadDms);
     return () => { this._unreadListeners = this._unreadListeners.filter(l => l !== fn); };
+  }
+
+  subscribeUnreadGlobal(fn: Listener<number>): () => void {
+    this._unreadGlobalListeners.push(fn);
+    fn(this._unreadGlobalCount);
+    return () => { this._unreadGlobalListeners = this._unreadGlobalListeners.filter(l => l !== fn); };
   }
 
   markDmRead(a: string, b: string) {
@@ -106,6 +159,7 @@ class ChatStore {
     (this._dmListeners.get(key) ?? []).forEach(l => l(msgs));
   }
   private _notifyUnread() { this._unreadListeners.forEach(l => l(this._unreadDms)); }
+  private _notifyUnreadGlobal() { this._unreadGlobalListeners.forEach(l => l(this._unreadGlobalCount)); }
 
   // Legacy shim — keeps MockMeshClient working unchanged
   get messages() { return this._global; }
@@ -145,6 +199,12 @@ export function useUnreadDms(): Set<string> {
   const [unread, setUnread] = useState<Set<string>>(() => chatStore.unreadDms);
   useEffect(() => chatStore.subscribeUnread(setUnread), []);
   return unread;
+}
+
+export function useUnreadGlobal(): number {
+  const [count, setCount] = useState<number>(() => chatStore.unreadGlobalCount);
+  useEffect(() => chatStore.subscribeUnreadGlobal(setCount), []);
+  return count;
 }
 
 // ── Mock auto-reply ──────────────────────────────────────────────────────────

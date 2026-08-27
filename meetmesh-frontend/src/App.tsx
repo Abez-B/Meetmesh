@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
 import { PageTransition } from './components/PageTransition';
+import { BackgroundPattern } from './components/BackgroundPattern';
 import LandingPage from './pages/LandingPage';
 import WaitingRoomPage from './pages/WaitingRoomPage';
 import MeetingRoomPage from './pages/MeetingRoomPage';
@@ -83,6 +84,7 @@ export default function App() {
       <ErrorBoundary fallback={FALLBACK}>
         <ToastProvider>
           <div className="app-shell">
+            <BackgroundPattern />
             <AnimatedRoutes />
           </div>
         </ToastProvider>

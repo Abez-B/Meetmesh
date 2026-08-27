@@ -6,10 +6,9 @@ import { normalizeMeetingCode, isValidMeetingCode } from 'meetmesh-core';
 import { ConnectionDot } from '../components/ConnectionDot';
 import { TooltipButton } from '../components/TooltipButton';
 import { CameraCapture } from '../components/CameraCapture';
-import { BackgroundPattern } from '../components/BackgroundPattern';
 import { commitPendingEventMeta, savePendingEventMeta } from '../utils/hostEventMeta';
 import { v4 as uuid } from 'uuid';
-import { Logo } from '../components/Logo';
+import { FloatingNavbar } from '../components/FloatingNavbar';
 import { SpringMeshPreview } from '../components/SpringMeshPreview';
 import './MeshVisual.css';
 import '../meetmesh-upgraded.css';
@@ -65,6 +64,8 @@ export default function LandingPage() {
 
     const onCreated = (payload: { meetingCode: string }) => {
       commitPendingEventMeta(payload.meetingCode);
+      const hId = sessionStorage.getItem('meetmesh_peer_id') || localStorage.getItem('meetmesh_peer_id');
+      if (hId) localStorage.setItem(`meetmesh_host_${payload.meetingCode}`, hId);
       navigate(`/manage/${payload.meetingCode}`);
     };
     const onError = ({ detail }: { detail: string }) => { setError(detail); setBusy(false); };
@@ -108,7 +109,9 @@ export default function LandingPage() {
     localStorage.setItem('meetmesh_peer_id', peerId);
     sessionStorage.setItem('meetmesh_is_host', 'true');
     sessionStorage.setItem('meetmesh_last_name', hostName.trim());
+    localStorage.setItem('meetmesh_last_name', hostName.trim());
     sessionStorage.setItem('meetmesh_last_profile_json', profileJson);
+    localStorage.setItem('meetmesh_last_profile_json', profileJson);
 
     try {
       await client.createMeeting(eventName.trim(), peerId, profileJson, eventSubtitle.trim(), eventDescription.trim());
@@ -125,19 +128,18 @@ export default function LandingPage() {
   };
 
   return (
-    <>
-      <BackgroundPattern />
-      <div className="mm-root">
-        <nav className="mm-nav">
-          <div className="mm-nav-logo">
-            <Logo size={28} />
-            <span className="mm-nav-wordmark">MeetMesh</span>
-          </div>
-          <div className="mm-nav-status">
-            <ConnectionDot />
-            <span>Relay online</span>
-          </div>
-        </nav>
+    <div className="mm-root">
+      <FloatingNavbar
+        variant="landing"
+        onJoinClick={() => {
+          setTab('join');
+          setTimeout(() => {
+            const el = document.getElementById('join-input-code');
+            el?.focus();
+            el?.scrollIntoView({ behavior: 'smooth' });
+          }, 50);
+        }}
+      />
 
         <div className="mm-page">
           <div className="mm-hero">
@@ -153,7 +155,7 @@ export default function LandingPage() {
               </h1>
 
               <p className="mm-subtitle">
-                MeetMesh turns networking into a real-time spatial mesh. Hosts launch a session, attendees join instantly, and the room becomes an animated graph of people and roles.
+                we-inai turns networking into a real-time spatial mesh. Hosts launch a session, attendees join instantly, and the room becomes an animated graph of people and roles.
               </p>
 
               <div className="mm-meta-row">
@@ -179,7 +181,7 @@ export default function LandingPage() {
               </p>
             </motion.section>
 
-            <div className="mm-visual">
+            <div className="mm-visual" id="mesh-preview-section">
               <div className="mm-visual-card">
                 <div className="mm-visual-header">
                   <span>Session mesh preview</span>
@@ -214,7 +216,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="mm-panel">
+            <div className="mm-panel" id="landing-panel-section">
               <div className="mm-panel-card">
                 <div className="mm-panel-top">
                   <div>
@@ -372,6 +374,7 @@ export default function LandingPage() {
                         <div className="mm-field">
                           <label className="mm-label">Meeting code</label>
                           <input
+                            id="join-input-code"
                             className="mm-input-upgraded mm-input-code"
                             placeholder="A3B7"
                             value={joinCode}
@@ -423,6 +426,5 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
-    </>
   );
 }

@@ -20,7 +20,8 @@ export function generateMeetingCode(): string {
 }
 
 export function isValidMeetingCode(code: string): boolean {
-  return /^[A-HJ-NP-Z2-9]{4}$/i.test(code);
+  if (!code || typeof code !== 'string') return false;
+  return /^[A-Z0-9]{4}$/i.test(code.trim());
 }
 
 export function normalizeMeetingCode(code: string): string {

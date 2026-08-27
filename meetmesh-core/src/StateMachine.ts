@@ -20,6 +20,7 @@ export type MachineEvent =
   | { type: 'WaitingRoomToggled'; payload: { isEnabled: boolean } }
   | { type: 'MeetingEnded' }
   | { type: 'WaitingForAdmission'; payload: { meetingCode: string } }
+  | { type: 'ParticipantAdmitted' }
   | { type: 'HostSecretSet'; payload: { secret: string } };
 
 export interface MachineState {
@@ -95,9 +96,12 @@ export class StateMachine {
           ? pArray.reduce((acc: any, p: any) => ({ ...acc, [p.peerId]: p }), {})
           : event.payload.participants;
         
+        const selfP = state.selfPeerId ? pMap[state.selfPeerId] : null;
+        const isWaiting = selfP && selfP.isAdmitted === false;
+
         return {
           ...state,
-          phase: 'active',
+          phase: isWaiting ? 'waiting' : 'active',
           room: {
             ...event.payload,
             participants: pMap,
@@ -107,6 +111,9 @@ export class StateMachine {
 
       case 'WaitingForAdmission':
         return { ...state, phase: 'waiting' };
+
+      case 'ParticipantAdmitted':
+        return { ...state, phase: 'active' };
 
     case 'ParticipantJoined': {
       if (!state.room) return state;
