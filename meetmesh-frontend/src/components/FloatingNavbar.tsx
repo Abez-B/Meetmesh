@@ -66,7 +66,6 @@ export function FloatingNavbar({
           </div>
           <div className="fn-brand-title">
             <span className="fn-wordmark">we-inai</span>
-            <span className="fn-badge">live</span>
           </div>
         </div>
 
@@ -88,14 +87,14 @@ export function FloatingNavbar({
                 className="fn-nav-btn"
                 onClick={() => scrollToSection('landing-panel-section')}
               >
-                Join Room
+                Join / Host
               </button>
               <button
                 type="button"
                 className="fn-nav-btn"
                 onClick={() => scrollToSection('mesh-preview-section')}
               >
-                Live Mesh
+                Radar
               </button>
             </>
           ) : meetingCode ? (
@@ -136,10 +135,12 @@ export function FloatingNavbar({
             </button>
           )}
 
-          <div className="fn-status">
-            <ConnectionDot />
-            {!isMobile && <span className="fn-status-text">Relay</span>}
-          </div>
+          {variant !== 'landing' && (
+            <div className="fn-status">
+              <ConnectionDot />
+              {!isMobile && <span className="fn-status-text">Connected</span>}
+            </div>
+          )}
 
           {variant === 'landing' ? (
             <button

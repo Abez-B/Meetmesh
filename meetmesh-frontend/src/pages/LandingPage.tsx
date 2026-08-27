@@ -143,27 +143,27 @@ export default function LandingPage() {
             <motion.section className="mm-copy" {...fade}>
               <div className="mm-eyebrow">
                 <div className="mm-eyebrow-dot" />
-                Live Professional Proximity
+                In-Person Event Network
               </div>
 
               <h1 className="mm-title">
-                Turn every attendee into a <em>live node.</em>
+                Connect with everyone <em>in the room.</em>
               </h1>
 
               <p className="mm-subtitle">
-                we-inai turns networking into a real-time spatial mesh. Hosts launch a session, attendees join instantly, and the room becomes an animated graph of people and roles.
+                we-inai gives your event an interactive participant directory. Attendees enter a 4-letter code or scan a QR code to view profiles, roles, and exchange contacts in real time.
               </p>
 
               <div className="mm-meta-row">
                 <ConnectionDot />
-                <span className="mm-status-pill">Websocket mesh active</span>
+                <span className="mm-status-pill">Live directory active</span>
               </div>
 
               <div className="mm-proof-grid mm-desktop-proof">
                 {([
-                  ['3D', 'live mesh presence'],
-                  ['QR', 'frictionless entry'],
-                  ['RT', 'role-aware updates'],
+                  ['Zero', 'app installs needed'],
+                  ['< 3s', 'instant code or QR entry'],
+                  ['Live', 'roles, profiles & chat'],
                 ] as const).map(([val, lbl]) => (
                   <div className="mm-proof-card" key={val}>
                     <span className="mm-proof-val">{val}</span>
@@ -173,17 +173,17 @@ export default function LandingPage() {
               </div>
 
               <p className="mm-hint mm-desktop-proof">
-                Built for founder dinners, campus events, accelerator cohorts, and sponsor-heavy conferences.
+                Designed for meetups, founder dinners, conferences, and demo days.
               </p>
             </motion.section>
 
             <div className="mm-visual" id="mesh-preview-section">
               <div className="mm-visual-card">
                 <div className="mm-visual-header">
-                  <span>Session mesh preview</span>
+                  <span>Interactive attendee radar</span>
                   <span className="mm-visual-badge">
                     <span className="mm-visual-live-dot" />
-                    Live demo
+                    Interactive
                   </span>
                 </div>
 
@@ -193,19 +193,19 @@ export default function LandingPage() {
 
                 <div className="mm-legend">
                   <span className="mm-legend-item">
-                    <i className="mm-legend-dot" style={{ background: '#FFD700', boxShadow: '0 0 6px rgba(255,215,0,0.5)' }} />
+                    <i className="mm-legend-dot" style={{ background: '#f59e0b', boxShadow: '0 0 6px rgba(245,158,11,0.4)' }} />
                     Host
                   </span>
                   <span className="mm-legend-item">
-                    <i className="mm-legend-dot" style={{ background: '#3B82F6' }} />
+                    <i className="mm-legend-dot" style={{ background: '#3b82f6' }} />
                     Speaker
                   </span>
                   <span className="mm-legend-item">
-                    <i className="mm-legend-dot" style={{ background: '#8B5CF6' }} />
+                    <i className="mm-legend-dot" style={{ background: '#8b5cf6' }} />
                     Organizer
                   </span>
                   <span className="mm-legend-item">
-                    <i className="mm-legend-dot" style={{ background: '#14B8A6' }} />
+                    <i className="mm-legend-dot" style={{ background: '#10b981' }} />
                     Attendee
                   </span>
                 </div>
@@ -216,20 +216,20 @@ export default function LandingPage() {
               <div className="mm-panel-card">
                 <div className="mm-panel-top">
                   <div>
-                    <p className="mm-panel-title">Start a room</p>
-                    <p className="mm-panel-desc">Create a host session or jump in with a meeting code.</p>
+                    <p className="mm-panel-title">Enter or Host a Room</p>
+                    <p className="mm-panel-desc">Join an active event or create a new room for attendees.</p>
                   </div>
-                  <span className="mm-instant-badge">Instant setup</span>
+                  <span className="mm-instant-badge">No app needed</span>
                 </div>
 
                 <div className="mm-tabs">
-                  {(['create', 'join'] as const).map(t => (
+                  {(['join', 'create'] as const).map(t => (
                     <button
                       key={t}
                       className={`mm-tab${tab === t ? ' active' : ''}`}
                       onClick={() => setTab(t)}
                     >
-                      {t === 'create' ? 'Create' : 'Join'}
+                      {t === 'join' ? 'Join Room' : 'Host Room'}
                     </button>
                   ))}
                 </div>
@@ -412,17 +412,17 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mm-bottom-strip">
-                  <span className="mm-strip-tag">WebSocket Relay</span>
-                  <span className="mm-strip-tag">Spatial Physics</span>
-                  <span className="mm-strip-tag">Live Audio FX</span>
+                  <span className="mm-strip-tag">Instant QR Code</span>
+                  <span className="mm-strip-tag">vCard (.vcf) Export</span>
+                  <span className="mm-strip-tag">Real-Time Chat</span>
                 </div>
               </div>
 
               <div className="mm-mobile-stats">
                 {([
-                  ['3D', 'Spatial Mesh'],
-                  ['QR', 'Instant Entry'],
-                  ['RT', 'Live Roles'],
+                  ['Zero', 'App installs'],
+                  ['< 3s', 'Instant entry'],
+                  ['Live', 'Profiles & chat'],
                 ] as const).map(([val, lbl]) => (
                   <div className="mm-proof-card" key={val}>
                     <span className="mm-proof-val">{val}</span>

@@ -65,7 +65,7 @@ export default function WaitingRoomPage() {
             <div className="wr-lobby-meta">
               <ConnectionDot />
               <span className="wr-lobby-sep">·</span>
-              <span>SignalR connected</span>
+              <span>Connected to host</span>
             </div>
           </motion.div>
         </div>

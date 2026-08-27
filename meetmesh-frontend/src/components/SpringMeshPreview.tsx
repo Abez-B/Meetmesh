@@ -2,14 +2,14 @@ import { useEffect, useRef } from 'react';
 
 /* ── Node definitions ───────────────────────────────────────────────────── */
 const NODE_DEFS = [
-  { label: 'S', fill: '#1e3a5f', stroke: '#3B82F6', text: '#60a5fa' },
-  { label: 'O', fill: '#2e1a4a', stroke: '#8B5CF6', text: '#a78bfa' },
-  { label: 'S', fill: '#1e3a5f', stroke: '#3B82F6', text: '#60a5fa' },
-  { label: 'A', fill: '#0d2e2b', stroke: '#14B8A6', text: '#2dd4bf' },
-  { label: 'A', fill: '#0d2e2b', stroke: '#14B8A6', text: '#2dd4bf' },
-  { label: 'A', fill: '#0d2e2b', stroke: '#14B8A6', text: '#2dd4bf' },
-  { label: 'A', fill: '#0d2e2b', stroke: '#14B8A6', text: '#2dd4bf' },
-  { label: 'A', fill: '#0d2e2b', stroke: '#14B8A6', text: '#2dd4bf' },
+  { label: 'SPK', fill: '#0f172a', stroke: '#3b82f6', text: '#93c5fd' },
+  { label: 'ORG', fill: '#1e1035', stroke: '#8b5cf6', text: '#c4b5fd' },
+  { label: 'SPK', fill: '#0f172a', stroke: '#3b82f6', text: '#93c5fd' },
+  { label: 'DEV', fill: '#06281e', stroke: '#10b981', text: '#6ee7b7' },
+  { label: 'DES', fill: '#06281e', stroke: '#10b981', text: '#6ee7b7' },
+  { label: 'FND', fill: '#06281e', stroke: '#10b981', text: '#6ee7b7' },
+  { label: 'INV', fill: '#06281e', stroke: '#10b981', text: '#6ee7b7' },
+  { label: 'ENG', fill: '#06281e', stroke: '#10b981', text: '#6ee7b7' },
 ] as const;
 
 const N = NODE_DEFS.length;
@@ -174,27 +174,21 @@ export function SpringMeshPreview() {
           />
         ))}
 
+        {/* ── Host node (center) ───────────────────────── */}
         <g style={{ cursor: 'default' }}>
-          <circle r="28" fill="none" stroke="#FFD700" strokeWidth="3" opacity="0.9" />
-          <defs>
-            <radialGradient id="smp-sun" cx="35%" cy="35%" r="65%">
-              <stop offset="0%"   stopColor="#FFE566" />
-              <stop offset="60%"  stopColor="#FFD700" />
-              <stop offset="100%" stopColor="#F59E0B" />
-            </radialGradient>
-          </defs>
-          <circle r="23" fill="url(#smp-sun)" />
-          <circle r="26" fill="none" stroke="#FFD700" strokeWidth="1" strokeDasharray="4 4" opacity="0.5" />
-          <text textAnchor="middle" dy="0.35em" fontSize="13px" fontWeight="800"
-            fontFamily="JetBrains Mono, monospace" fill="#000">H</text>
+          <circle r="26" fill="rgba(245, 158, 11, 0.08)" stroke="rgba(245, 158, 11, 0.3)" strokeWidth="1" />
+          <circle r="19" fill="#1e1b4b" stroke="#f59e0b" strokeWidth="2" />
+          <text textAnchor="middle" dy="0.35em" fontSize="9.5px" fontWeight="700"
+            fontFamily="Inter, -apple-system, sans-serif" fill="#fbbf24">HOST</text>
         </g>
 
+        {/* ── Attendee nodes ────────────────────────────────────── */}
         {NODE_DEFS.map((def, i) => (
           <g key={i} data-sn={i} transform="translate(0,0)">
-            <circle r="18" fill="none" stroke={def.stroke} strokeWidth="1.6" opacity="0.6" />
-            <circle r="14" fill={def.fill} stroke={def.stroke} strokeWidth="1.2" />
-            <text textAnchor="middle" dy="0.35em" fontSize="10px" fontWeight="700"
-              fontFamily="JetBrains Mono, monospace" fill={def.text}>
+            <circle r="18" fill="none" stroke={def.stroke} strokeWidth="1" opacity="0.35" />
+            <circle r="14" fill={def.fill} stroke={def.stroke} strokeWidth="1.5" />
+            <text textAnchor="middle" dy="0.35em" fontSize="8.5px" fontWeight="600"
+              fontFamily="Inter, -apple-system, sans-serif" fill={def.text}>
               {def.label}
             </text>
           </g>

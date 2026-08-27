@@ -85,26 +85,15 @@
 }
 
 .fn-wordmark {
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-display, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
-  background: linear-gradient(180deg, #ffffff 10%, #cbd5e1 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #f8fafc;
 }
 
 .fn-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 1.5px 6px;
-  border-radius: 9999px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.28);
-  text-transform: uppercase;
+  display: none;
 }
 
 /* ── Center: Nav items ────────────────────────────────────── */
@@ -212,11 +201,11 @@
 }
 
 .fn-cta-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -225,15 +214,15 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   text-decoration: none;
 }
 
 .fn-cta-btn:hover {
+  background: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.5);
-  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.15);
 }
 
 .fn-cta-arrow {
@@ -317,7 +306,7 @@
   .fn-cta-btn {
     padding: 5px 12px;
     font-size: 11.5px;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 
   .fn-sound-btn {

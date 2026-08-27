@@ -145,8 +145,8 @@ export default function JoinProfilePage() {
           </div>
 
           <div className="jp-aside-footer">
-            <span className="jp-aside-tag">{hasCachedProfile ? 'Saved profile detected' : 'Fresh profile setup'}</span>
-            <span className="jp-aside-tag">SignalR session handoff</span>
+            <span className="jp-aside-tag">{hasCachedProfile ? 'Saved profile detected' : 'Instant setup'}</span>
+            <span className="jp-aside-tag">Real-time connection</span>
           </div>
         </motion.aside>
 
