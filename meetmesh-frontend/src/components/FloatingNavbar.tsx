@@ -155,7 +155,7 @@ export function FloatingNavbar({
               }}
             >
               <span>{isMobile ? 'Enter' : 'Enter Code'}</span>
-              <span className="fn-cta-arrow">→</span>
+              {!isMobile && <span className="fn-cta-arrow">→</span>}
             </button>
           ) : (
             <button
