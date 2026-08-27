@@ -31,6 +31,7 @@ const HostTopbar = memo(function HostTopbar({
   onChat,
   chatActive,
   chatHasUnread,
+  isMobile,
 }: {
   room: MeetingRoom;
   code: string;
@@ -39,6 +40,7 @@ const HostTopbar = memo(function HostTopbar({
   onChat: () => void;
   chatActive: boolean;
   chatHasUnread: boolean;
+  isMobile?: boolean;
 }) {
   const elapsed = useElapsedTime(room.startedAt);
   const count = Object.keys(room.participants).length;
@@ -74,7 +76,7 @@ const HostTopbar = memo(function HostTopbar({
         </button>
         <button className="hp-btn-secondary" onClick={() => window.open(`/meeting/${code}`, '_blank')}>Stage View</button>
         <button className="hp-btn-secondary" onClick={onPresent}>Present</button>
-        <button className="hp-btn-danger" onClick={onClose}>End Event</button>
+        <button className="hp-btn-danger" onClick={onClose}>{isMobile ? 'End' : 'End Event'}</button>
       </div>
     </div>
   );
@@ -231,6 +233,7 @@ export default function HostPanelPage() {
         onChat={() => { setShowChat(v => !v); if (showChat) setChatDmPeerId(null); }}
         chatActive={showChat}
         chatHasUnread={hasUnread}
+        isMobile={isMobile}
       />
 
       <div className="hp-grid" style={{ marginRight: (showChat && !isMobile) ? 320 : 0 }}>

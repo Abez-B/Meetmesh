@@ -352,7 +352,7 @@ export default function LandingPage() {
                           variant="primary"
                           onClick={handleCreate}
                           disabled={!eventName || !hostName || busy}
-                          style={{ width: '100%', marginTop: 18, minHeight: 50 } as React.CSSProperties}
+                          style={{ width: '100%', marginTop: 18, minHeight: 44 } as React.CSSProperties}
                         />
 
                         <p className="mm-form-note">
@@ -390,7 +390,7 @@ export default function LandingPage() {
                           variant="primary"
                           onClick={handleJoin}
                           disabled={!joinCode || joinCode.length < 4 || busy}
-                          style={{ width: '100%', marginTop: 18, minHeight: 50 } as React.CSSProperties}
+                          style={{ width: '100%', marginTop: 18, minHeight: 44 } as React.CSSProperties}
                         />
 
                         <p className="mm-form-note">

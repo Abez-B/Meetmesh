@@ -8,7 +8,7 @@ interface Props extends HTMLMotionProps<"button"> {
 }
 
 export function TooltipButton({ text, tooltip, icon, variant = 'default', className = '', style, ...props }: Props) {
-  const vClass = variant === 'default' || variant === 'primary' ? '' : `btn-31--${variant}`;
+  const vClass = `btn-31--${variant}`;
   
   return (
     <motion.button 
