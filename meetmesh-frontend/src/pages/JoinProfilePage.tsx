@@ -85,7 +85,13 @@ export default function JoinProfilePage() {
     sessionStorage.setItem('meetmesh_peer_id', peerId);
     localStorage.setItem('meetmesh_peer_id', peerId);
     sessionStorage.setItem('meetmesh_last_name', name.trim());
+    localStorage.setItem('meetmesh_last_name', name.trim());
     sessionStorage.setItem('meetmesh_last_profile_json', profileJson);
+    localStorage.setItem('meetmesh_last_profile_json', profileJson);
+    const upperCode = code.toUpperCase();
+    localStorage.setItem(`meetmesh_peer_${upperCode}`, peerId);
+    localStorage.setItem(`meetmesh_name_${upperCode}`, name.trim());
+    localStorage.setItem(`meetmesh_profile_${upperCode}`, profileJson);
 
     try {
       await client.joinMeeting(code, name.trim(), peerId, profileJson);

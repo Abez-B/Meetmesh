@@ -113,11 +113,11 @@ export default function HostPanelPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    if (code && client.connectionStatus === 'disconnected' && state.phase === 'idle') {
+    if (code && (!state.room || state.phase === 'idle')) {
       client.connect().then(() => {
         const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${code}`);
-        const peerId = sessionStorage.getItem('meetmesh_peer_id')
-          || hostPeerForRoom
+        const peerId = hostPeerForRoom
+          || sessionStorage.getItem('meetmesh_peer_id')
           || localStorage.getItem('meetmesh_peer_id')
           || uuid();
         const lastName = sessionStorage.getItem('meetmesh_last_name')
@@ -128,6 +128,7 @@ export default function HostPanelPage() {
           || '{}';
 
         sessionStorage.setItem('meetmesh_peer_id', peerId);
+        localStorage.setItem('meetmesh_peer_id', peerId);
         sessionStorage.setItem('meetmesh_is_host', 'true');
         sessionStorage.setItem('meetmesh_last_name', lastName);
         sessionStorage.setItem('meetmesh_last_profile_json', lastJson);
@@ -135,10 +136,37 @@ export default function HostPanelPage() {
         client.joinMeeting(code, lastName, peerId, lastJson).catch(console.error);
       }).catch(console.error);
     }
-  }, [code, client, state.phase]);
+  }, [code, client, state.phase, state.room]);
+
+  // Prevent host from accidentally navigating away or closing window
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'You are the host of this event. Are you sure you want to leave?';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  // Tab visibility recovery: host presence never dies on tab sleep
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && code) {
+        client.heartbeat(code).catch(() => {
+          client.connect().catch(console.error);
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [client, code]);
 
   useEffect(() => {
-    if (state.room && state.room.hostPeerId !== state.selfPeerId && state.selfPeerId) {
+    if (!state.room || !state.selfPeerId) return;
+    const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${code}`);
+    const isStoredHost = hostPeerForRoom === state.selfPeerId;
+    if (state.room.hostPeerId !== state.selfPeerId && !isStoredHost) {
       navigate(`/meeting/${code}`);
     }
   }, [state.room, state.selfPeerId, navigate, code]);

@@ -161,7 +161,18 @@ export function FloatingNavbar({
             <button
               type="button"
               className="fn-ghost-btn"
-              onClick={() => navigate('/')}
+              onClick={() => {
+                const isHost = variant === 'host'
+                  || (meetingCode && localStorage.getItem(`meetmesh_host_${meetingCode.toUpperCase()}`))
+                  || sessionStorage.getItem('meetmesh_is_host') === 'true';
+                if (isHost) {
+                  const confirmed = window.confirm(
+                    'You are the host of this event. Your host node will remain in the room. Return to home?'
+                  );
+                  if (!confirmed) return;
+                }
+                navigate('/');
+              }}
             >
               Exit
             </button>

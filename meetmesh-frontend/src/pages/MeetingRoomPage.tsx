@@ -44,29 +44,71 @@ export default function MeetingRoomPage() {
 
   useEffect(() => {
     if (state.phase === 'ended') { navigate('/'); return; }
-    if (state.phase === 'idle' && client.connectionStatus === 'disconnected') {
+    if (!state.room || state.phase === 'idle') {
       const pathCode = state.room?.meetingCode || window.location.pathname.split('/').pop() || '';
+      if (!pathCode) return;
+      const upperCode = pathCode.toUpperCase();
+
       const isHost = sessionStorage.getItem('meetmesh_is_host') === 'true'
-        || Boolean(localStorage.getItem(`meetmesh_host_${pathCode}`));
-      const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${pathCode}`);
+        || Boolean(localStorage.getItem(`meetmesh_host_${upperCode}`));
+      const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${upperCode}`);
       const peerId = sessionStorage.getItem('meetmesh_peer_id')
         || (isHost ? hostPeerForRoom : null)
+        || localStorage.getItem(`meetmesh_peer_${upperCode}`)
         || localStorage.getItem('meetmesh_peer_id');
       const lastName = sessionStorage.getItem('meetmesh_last_name')
-        || (isHost ? localStorage.getItem('meetmesh_last_name') : null);
+        || localStorage.getItem(`meetmesh_name_${upperCode}`)
+        || localStorage.getItem('meetmesh_last_name')
+        || (isHost ? 'Host' : '');
       const lastJson = sessionStorage.getItem('meetmesh_last_profile_json')
-        || (isHost ? localStorage.getItem('meetmesh_last_profile_json') : null)
+        || localStorage.getItem(`meetmesh_profile_${upperCode}`)
+        || localStorage.getItem('meetmesh_last_profile_json')
         || '{}';
 
-      if (pathCode && peerId && (lastName || isHost)) {
+      if (peerId && (lastName || isHost)) {
         sessionStorage.setItem('meetmesh_peer_id', peerId);
         if (isHost) sessionStorage.setItem('meetmesh_is_host', 'true');
-        client.connect().then(() => client.joinMeeting(pathCode, lastName || 'Host', peerId, lastJson).catch(console.error)).catch(console.error);
+        client.connect()
+          .then(() => client.joinMeeting(upperCode, lastName || 'Host', peerId, lastJson).catch(console.error))
+          .catch(console.error);
       } else {
-        navigate(`/join/${pathCode}`);
+        const timeout = setTimeout(() => {
+          if (!state.room) navigate(`/join/${upperCode}`);
+        }, 1200);
+        return () => clearTimeout(timeout);
       }
     }
-  }, [state.phase, client.connectionStatus, navigate, state.room?.meetingCode, client]);
+  }, [state.phase, state.room, navigate, client]);
+
+  // Prevent accidental tab closure for host
+  useEffect(() => {
+    const isHost = state.room?.hostPeerId === state.selfPeerId;
+    if (!isHost) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'You are the host of this event. Leaving will pause your session.';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [state.room?.hostPeerId, state.selfPeerId]);
+
+  // Tab visibility recovery: keep connection alive and recover instantly from background tab sleep
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const code = state.room?.meetingCode;
+        if (code) {
+          client.heartbeat(code).catch(() => {
+            // Reconnect if socket dropped during mobile sleep or background throttling
+            client.connect().catch(console.error);
+          });
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [client, state.room?.meetingCode]);
 
   useEffect(() => {
     const handleReaction = (payload: { peerId: string; displayName: string; emoji: string; avatarUrl?: string }) => {

@@ -119,8 +119,11 @@ function checkJoinRateLimit(ip: string): boolean {
   return true;
 }
 
-// ── Heartbeat config ───────────────────────────────────────────────────────
-const HEARTBEAT_TIMEOUT_MS = 120_000; // kick after 2 minutes without heartbeat
+// ── Disconnect buffer config ───────────────────────────────────────────────
+// Attendees get a 5-minute grace period on disconnect (accidental refresh, tab switch, mobile lock).
+// The host can NEVER leave / be deleted by disconnect or idle timeouts.
+const DISCONNECT_BUFFER_MS = 5 * 60_000; // 5 minutes
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
 
 // ── Meeting expiry ─────────────────────────────────────────────────────────
 const EMPTY_MEETING_TTL_MS = 30 * 60_000; // 30 minutes
@@ -161,9 +164,15 @@ export function setupSocketIO(server: HTTPServer) {
         // Never kick the meeting host due to idle or heartbeat delay
         if (peerId === meeting.hostPeerId) continue;
 
-        if (now - participant.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
-          logger.info({ peerId, code }, "Kicking participant: heartbeat timeout");
-          const targetSocket = io.sockets.sockets.get(participant.connectionId);
+        // If the socket is still connected, the tab is simply idle/in background. Do NOT kick!
+        const targetSocket = io.sockets.sockets.get(participant.connectionId);
+        if (targetSocket && targetSocket.connected) {
+          continue;
+        }
+
+        // Only kick if socket is completely disconnected AND 5-minute buffer expired
+        if (now - participant.lastHeartbeat > DISCONNECT_BUFFER_MS) {
+          logger.info({ peerId, code }, "Purging participant: 5-minute disconnect buffer expired");
           if (targetSocket) {
             targetSocket.emit("Kicked", { meetingCode: code, reason: "heartbeat_timeout" });
             targetSocket.leave(code);
@@ -268,6 +277,15 @@ export function setupSocketIO(server: HTTPServer) {
           return;
         }
 
+        // Cancel any pending disconnect purge timer for this peer
+        const timerKey = `${code}:${data.peerId}`;
+        const pendingTimer = disconnectTimers.get(timerKey);
+        if (pendingTimer) {
+          clearTimeout(pendingTimer);
+          disconnectTimers.delete(timerKey);
+          logger.info({ peerId: data.peerId, code }, "Cancelled disconnect timer — peer rejoined within 5-minute buffer");
+        }
+
         // ── Reconnect deduplication ───────────────────────────────────────
         // If the peer already exists in this meeting, just update their
         // connectionId and socket data rather than creating a duplicate entry.
@@ -275,6 +293,9 @@ export function setupSocketIO(server: HTTPServer) {
         if (existingParticipant) {
           existingParticipant.connectionId = socket.id;
           existingParticipant.lastHeartbeat = Date.now();
+          if (data.displayName) existingParticipant.displayName = data.displayName;
+          if (data.profileJson) existingParticipant.json = data.profileJson;
+          if (data.peerId === meeting.hostPeerId) existingParticipant.role = 'Host';
           peerToParticipant.set(data.peerId, existingParticipant);
 
           socket.join(code);
@@ -801,9 +822,21 @@ export function setupSocketIO(server: HTTPServer) {
       if (meetingCode && peerId) {
         const meeting = meetings.get(meetingCode);
         if (meeting) {
+          // ── The Host CANNOT leave at all on disconnect ─────────────────
+          if (peerId === meeting.hostPeerId) {
+            logger.info({ peerId, meetingCode }, "Host disconnected socket — keeping host node permanently in room");
+            return;
+          }
+
           const participant = meeting.participants.get(peerId);
           if (participant && participant.connectionId === socket.id) {
-            setTimeout(() => {
+            const timerKey = `${meetingCode}:${peerId}`;
+            const existingTimer = disconnectTimers.get(timerKey);
+            if (existingTimer) clearTimeout(existingTimer);
+
+            // 5-minute buffer before removing attendee from the room
+            const timer = setTimeout(() => {
+              disconnectTimers.delete(timerKey);
               const current = meeting.participants.get(peerId);
               if (current && current.connectionId === socket.id) {
                 meeting.participants.delete(peerId);
@@ -813,8 +846,11 @@ export function setupSocketIO(server: HTTPServer) {
                 io.to(meetingCode).emit("WaitingRoomUpdate", getWaitingPeers(meeting));
                 scheduleExpiryIfEmpty(meeting, io);
                 storage.scheduleSave(meetings);
+                logger.info({ peerId, meetingCode }, "5-minute disconnect buffer expired — removed attendee");
               }
-            }, 5000);
+            }, DISCONNECT_BUFFER_MS);
+
+            disconnectTimers.set(timerKey, timer);
           }
         }
       }

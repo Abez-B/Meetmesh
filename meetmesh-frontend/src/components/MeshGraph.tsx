@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, memo, useId } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo, useId } from 'react';
 import { Participant, parseProfile } from 'meetmesh-core';
 import { SpaceBackground } from './SpaceBackground';
 import './MeshGraph.css';
@@ -369,6 +369,37 @@ function MeshGraphInner({
     return () => cancelAnimationFrame(rafRef.current);
   }, [refreshKey, nodes.length, disableSimulation, relaxStep, flushPositions]);
 
+  // Synchronously flush positions right after React commits new nodes to DOM
+  useLayoutEffect(() => {
+    flushPositions();
+  }, [nodes, flushPositions]);
+
+  // Tab inactivity recovery: when tab returns to foreground or runs in background
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        for (let i = 0; i < 20; i++) {
+          relaxStep();
+        }
+        flushPositions();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Fallback ticker for inactive/background tabs where RAF is suspended by browser
+    const bgInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible' && nodesRef.current.length > 0) {
+        relaxStep();
+        flushPositions();
+      }
+    }, 2000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(bgInterval);
+    };
+  }, [relaxStep, flushPositions]);
+
   useEffect(() => {
     const svgEl = svgRef.current;
     const clear = () => {
@@ -612,7 +643,10 @@ function MeshGraphInner({
               <line
                 key={`link-${node.id}`}
                 data-link-target={node.id}
-                x1="0" y1="0" x2="0" y2="0"
+                x1={(hostNode?.x ?? 0).toFixed(1)}
+                y1={(hostNode?.y ?? 0).toFixed(1)}
+                x2={node.x.toFixed(1)}
+                y2={node.y.toFixed(1)}
                 stroke={node.visited ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.13)'}
                 strokeWidth={node.visited ? 1.8 : 1}
                 strokeDasharray={node.visited ? undefined : '4 7'}
@@ -628,7 +662,7 @@ function MeshGraphInner({
                 key={node.id}
                 data-node-id={node.id}
                 className={`constellation-node node-${node.role.toLowerCase()}`}
-                transform="translate(0,0)"
+                transform={`translate(${node.x.toFixed(1)},${node.y.toFixed(1)})`}
                 onPointerEnter={disableInteractions ? undefined : (e) => {
                   setHoveredNode(node.id);
                   setTooltip({ name: node.p.displayName, role: node.role, color: theme.ring, x: e.clientX, y: e.clientY });
@@ -668,7 +702,7 @@ function MeshGraphInner({
             <g
               data-node-id={hostNode.id}
               className="constellation-node node-host"
-              transform="translate(0,0)"
+              transform={`translate(${hostNode.x.toFixed(1)},${hostNode.y.toFixed(1)})`}
               onClick={e => handleInnerNodeClick(hostNode, e)}
               style={{ cursor: 'pointer', '--node-ring-color': ROLE_THEME.Host.ring } as React.CSSProperties}
             >
