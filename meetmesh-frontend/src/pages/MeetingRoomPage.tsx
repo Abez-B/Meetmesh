@@ -36,6 +36,16 @@ export default function MeetingRoomPage() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const fitRef = useRef<(() => void) | null>(null);
 
+  const pathCode = state.room?.meetingCode || window.location.pathname.split('/').pop() || '';
+  const upperCode = pathCode.toUpperCase();
+
+  const [isKicked, setIsKicked] = useState(() => {
+    return (
+      sessionStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true' ||
+      localStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true'
+    );
+  });
+
   const checkMobile = useCallback(() => setIsMobile(window.innerWidth < 768), []);
   useEffect(() => {
     window.addEventListener('resize', checkMobile);
@@ -43,11 +53,32 @@ export default function MeetingRoomPage() {
   }, [checkMobile]);
 
   useEffect(() => {
+    const onKicked = () => {
+      localStorage.setItem(`meetmesh_kicked_${upperCode}`, 'true');
+      sessionStorage.setItem(`meetmesh_kicked_${upperCode}`, 'true');
+      setIsKicked(true);
+      client.disconnect();
+    };
+
+    const onError = (payload: { code: string; detail: string }) => {
+      if (payload.code === 'KICKED' || payload.code === 'REMOVED' || payload.detail?.toLowerCase().includes('removed')) {
+        onKicked();
+      }
+    };
+
+    client.on('Kicked', onKicked);
+    client.on('Error', onError);
+    return () => {
+      client.off('Kicked', onKicked);
+      client.off('Error', onError);
+    };
+  }, [client, upperCode]);
+
+  useEffect(() => {
+    if (isKicked) return;
     if (state.phase === 'ended') { navigate('/'); return; }
     if (!state.room || state.phase === 'idle') {
-      const pathCode = state.room?.meetingCode || window.location.pathname.split('/').pop() || '';
-      if (!pathCode) return;
-      const upperCode = pathCode.toUpperCase();
+      if (!upperCode) return;
 
       const isHost = sessionStorage.getItem('meetmesh_is_host') === 'true'
         || Boolean(localStorage.getItem(`meetmesh_host_${upperCode}`));
@@ -66,11 +97,30 @@ export default function MeetingRoomPage() {
         || '{}';
 
       if (peerId && (lastName || isHost)) {
+        let cancelled = false;
         sessionStorage.setItem('meetmesh_peer_id', peerId);
         if (isHost) sessionStorage.setItem('meetmesh_is_host', 'true');
-        client.connect()
-          .then(() => client.joinMeeting(upperCode, lastName || 'Host', peerId, lastJson).catch(console.error))
-          .catch(console.error);
+
+        const reconnect = async () => {
+          try {
+            await client.connect();
+            if (cancelled) return;
+            await client.joinMeeting(upperCode, lastName || 'Host', peerId, lastJson);
+          } catch (err) {
+            console.warn('[MeetingRoomPage] Reconnect failed:', err);
+            if (!cancelled) navigate(`/join/${upperCode}`);
+          }
+        };
+        reconnect();
+
+        const timeout = setTimeout(() => {
+          if (!cancelled && !state.room) navigate(`/join/${upperCode}`);
+        }, 12000);
+
+        return () => {
+          cancelled = true;
+          clearTimeout(timeout);
+        };
       } else {
         const timeout = setTimeout(() => {
           if (!state.room) navigate(`/join/${upperCode}`);
@@ -78,7 +128,7 @@ export default function MeetingRoomPage() {
         return () => clearTimeout(timeout);
       }
     }
-  }, [state.phase, state.room, navigate, client]);
+  }, [state.phase, state.room, navigate, client, isKicked, upperCode]);
 
   // Prevent accidental tab closure for host
   useEffect(() => {
@@ -140,16 +190,80 @@ export default function MeetingRoomPage() {
   // Hoist useMemo above the early return — hooks must be called unconditionally.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const participantsList = useMemo(
-    () => state.room ? Object.values(state.room.participants) : [],
+    () =>
+      state.room
+        ? Object.values(state.room.participants).filter(
+            p => !p.peerId.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName?.toLowerCase().includes('presentation')
+          )
+        : [],
     [state.room?.participants]
   );
+
+  if (isKicked) {
+    return (
+      <div className="mr-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
+        <div style={{
+          maxWidth: 440,
+          width: '100%',
+          background: 'rgba(18, 19, 26, 0.95)',
+          border: '1px solid rgba(239, 68, 68, 0.25)',
+          borderRadius: 20,
+          padding: '44px 28px',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.8)',
+        }}>
+          <div style={{
+            width: 60,
+            height: 60,
+            borderRadius: '50%',
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            color: '#ef4444',
+            fontSize: 26,
+          }}>
+            🚫
+          </div>
+          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
+            You have been removed
+          </h2>
+          <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 28px' }}>
+            You have been removed from this room by the host.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem(`meetmesh_kicked_${upperCode}`);
+              sessionStorage.removeItem(`meetmesh_kicked_${upperCode}`);
+              navigate('/');
+            }}
+            style={{
+              padding: '11px 26px',
+              borderRadius: 8,
+              background: '#f8fafc',
+              color: '#0f172a',
+              fontWeight: 600,
+              fontSize: '13px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!state.room) {
     return <MeetingRoomSkeleton />;
   }
 
   const isHost = state.room.hostPeerId === state.selfPeerId;
-  const count = Object.keys(state.room.participants).length;
+  const count = participantsList.length;
   const code = state.room.meetingCode;
 
   const selfParticipant = state.selfPeerId ? state.room.participants[state.selfPeerId] : null;
@@ -189,9 +303,13 @@ export default function MeetingRoomPage() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 22, lineHeight: 1 }}>📢</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M22 8.5c0 2.5-2.5 4.5-5 6.5l-5 3-5-3c-2.5-2-5-4-5-6.5C2 5.5 4.5 3 8 3c1.5 0 2.9.5 4 1.5C13.1 3.5 14.5 3 16 3c3.5 0 6 2.5 6 5.5z"/>
+                <path d="M12 17.5v4"/>
+                <path d="M8 21.5h8"/>
+              </svg>
               <div>
-                <div style={{ fontSize: 10.5, color: '#f59e0b', fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                <div style={{ fontSize: 10.5, color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {activeAnnouncement.hostName} · Announcement
                 </div>
                 <div style={{ fontSize: 13.5, color: '#f8fafc', fontWeight: 500, marginTop: 2 }}>
@@ -237,9 +355,12 @@ export default function MeetingRoomPage() {
           <button
             className={`mr-btn-secondary${showChat ? ' mr-btn-active' : ''}`}
             onClick={() => setShowChat(!showChat)}
-            style={{ position: 'relative' }}
+            style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            💬 Chat
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Chat
             {hasUnread && !showChat && <span className="mr-chat-unread-dot" />}
           </button>
           <button
@@ -297,6 +418,7 @@ export default function MeetingRoomPage() {
           {showSidebar && (
             <motion.div
               className="mr-sidebar"
+              style={{ right: showChat && !isMobile ? 320 : 0 }}
               initial={{ opacity: 0, x: 300 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 300 }}
@@ -331,12 +453,11 @@ export default function MeetingRoomPage() {
                     flex: 1,
                     padding: '8px 10px',
                     borderRadius: '6px',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    background: 'rgba(56, 189, 248, 0.1)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    background: 'rgba(56, 189, 248, 0.08)',
                     color: '#38bdf8',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    fontWeight: 600,
+                    fontSize: '12px',
+                    fontWeight: 500,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -345,20 +466,23 @@ export default function MeetingRoomPage() {
                   }}
                   title="Export vCard to Apple/Google Contacts"
                 >
-                  <span>📇</span>
-                  <span>Export vCard</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8"/>
+                  </svg>
+                  <span>vCard</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => exportContactsAsCSV(participantsList, visitedNodes, { eventName: state.room?.eventName })}
                   style={{
-                    padding: '8px 12px',
+                    padding: '8px 14px',
                     borderRadius: '6px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: '#cbd5e1',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: 500,
                     cursor: 'pointer',
                   }}
                   title="Download CSV spreadsheet"
@@ -381,7 +505,11 @@ export default function MeetingRoomPage() {
           aria-label="Chat"
           style={{ position: 'relative' }}
         >
-          <span className="mr-mobile-nav-icon">💬</span>
+          <span className="mr-mobile-nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </span>
           <span className="mr-mobile-nav-label">Chat</span>
           {hasUnread && !showChat && <span className="mr-chat-unread-dot" />}
         </button>
@@ -390,7 +518,14 @@ export default function MeetingRoomPage() {
           onClick={() => setSidebarOpen(!showSidebar)}
           aria-label="Participants"
         >
-          <span className="mr-mobile-nav-icon">👥</span>
+          <span className="mr-mobile-nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </span>
           <span className="mr-mobile-nav-label">People</span>
         </button>
         <button
@@ -398,7 +533,14 @@ export default function MeetingRoomPage() {
           aria-label="Fit all nodes"
           onClick={() => fitRef.current?.()}
         >
-          <span className="mr-mobile-nav-icon">⊕</span>
+          <span className="mr-mobile-nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9"/>
+              <polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/>
+              <line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+          </span>
           <span className="mr-mobile-nav-label">Fit</span>
         </button>
         <button
@@ -406,7 +548,13 @@ export default function MeetingRoomPage() {
           onClick={() => { client.disconnect(); navigate('/'); }}
           aria-label="Leave"
         >
-          <span className="mr-mobile-nav-icon">✕</span>
+          <span className="mr-mobile-nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </span>
           <span className="mr-mobile-nav-label">Leave</span>
         </button>
       </div>

@@ -26,9 +26,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
     0 16px 36px -10px rgba(0, 0, 0, 0.8),
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-    0 1px 0 rgba(255, 255, 255, 0.2) inset,
-    0 0 28px rgba(99, 102, 241, 0.08);
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,23 +34,6 @@
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
-}
-
-/* Specular top sheen */
-.fn-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 15%;
-  right: 15%;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.3) 50%,
-    transparent 100%
-  );
-  pointer-events: none;
 }
 
 /* ── Brand ─────────────────────────────────────────── */
@@ -85,10 +66,9 @@
 }
 
 .fn-wordmark {
-  font-family: var(--font-display, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif);
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: #f8fafc;
 }
 
@@ -107,10 +87,9 @@
   border: 0;
   background: transparent;
   color: #94a3b8;
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   padding: 6px 13px;
   border-radius: 9999px;
   cursor: pointer;
@@ -134,12 +113,12 @@
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   color: #94a3b8;
 }
 
 .fn-room-code {
+  font-family: var(--font-mono, monospace);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: #38bdf8;

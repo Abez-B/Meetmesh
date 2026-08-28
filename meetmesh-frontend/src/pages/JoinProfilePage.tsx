@@ -42,14 +42,36 @@ export default function JoinProfilePage() {
   }, []);
 
   useEffect(() => {
+    const upperCode = code?.toUpperCase();
+    if (upperCode && (
+      sessionStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true' ||
+      localStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true'
+    )) {
+      setError('You have been removed from this room by the host.');
+    }
+  }, [code]);
+
+  useEffect(() => {
     client.connect().catch((err) => {
       console.error('[JoinProfilePage] Connection failed:', err);
       setError(`Relay connection failed: ${err?.message || 'Check if API is running at localhost:5000'}`);
     });
-    const onError = ({ detail }: { detail: string }) => { setError(detail); setBusy(false); };
+    const onError = ({ detail, code: errCode }: { detail: string; code?: string }) => {
+      if (errCode === 'KICKED' || errCode === 'REMOVED' || detail?.toLowerCase().includes('removed')) {
+        const upperCode = code?.toUpperCase();
+        if (upperCode) {
+          localStorage.setItem(`meetmesh_kicked_${upperCode}`, 'true');
+          sessionStorage.setItem(`meetmesh_kicked_${upperCode}`, 'true');
+        }
+        setError('You have been removed from this room by the host.');
+      } else {
+        setError(detail);
+      }
+      setBusy(false);
+    };
     client.on('Error', onError);
     return () => client.off('Error', onError);
-  }, [client]);
+  }, [client, code]);
 
   const handleCapture     = (base64: string) => { setPhoto(base64); setStep(2); };
   const handleSkipCapture = () => { setPhoto('SKIP'); setStep(2); };
@@ -58,6 +80,11 @@ export default function JoinProfilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code || !isValidMeetingCode(code)) { setError('Invalid meeting code.'); return; }
+    const upperCode = code.toUpperCase();
+    if (sessionStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true' || localStorage.getItem(`meetmesh_kicked_${upperCode}`) === 'true') {
+      setError('You have been removed from this room by the host.');
+      return;
+    }
     if (!name.trim())    { setError('Name is required.'); return; }
     if (!linkedIn.trim()) { setError('LinkedIn URL is required.'); return; }
 
@@ -88,7 +115,6 @@ export default function JoinProfilePage() {
     localStorage.setItem('meetmesh_last_name', name.trim());
     sessionStorage.setItem('meetmesh_last_profile_json', profileJson);
     localStorage.setItem('meetmesh_last_profile_json', profileJson);
-    const upperCode = code.toUpperCase();
     localStorage.setItem(`meetmesh_peer_${upperCode}`, peerId);
     localStorage.setItem(`meetmesh_name_${upperCode}`, name.trim());
     localStorage.setItem(`meetmesh_profile_${upperCode}`, profileJson);
@@ -295,32 +321,33 @@ export default function JoinProfilePage() {
                 </div>
 
                 <div className="jp-field">
-                  <label className="jp-label">Interest Tags (Pick up to 3)</label>
+                  <label className="jp-label">Interest tags (pick up to 3)</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
-                    {['#AI', '#Founder', '#Engineering', '#Design', '#Product', '#Web3', '#Hiring', '#Student'].map(tag => {
-                      const active = selectedTags.includes(tag);
+                    {['AI', 'Founder', 'Engineering', 'Design', 'Product', 'Web3', 'Hiring', 'Student'].map(tag => {
+                      const active = selectedTags.includes(`#${tag}`);
                       return (
                         <button
                           type="button"
                           key={tag}
                           onClick={() => {
-                            if (active) setSelectedTags(selectedTags.filter(t => t !== tag));
-                            else if (selectedTags.length < 3) setSelectedTags([...selectedTags, tag]);
+                            const fullTag = `#${tag}`;
+                            if (active) setSelectedTags(selectedTags.filter(t => t !== fullTag));
+                            else if (selectedTags.length < 3) setSelectedTags([...selectedTags, fullTag]);
                           }}
                           style={{
-                            padding: '6px 12px',
-                            borderRadius: '9999px',
-                            fontSize: '11.5px',
-                            fontFamily: 'monospace',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 500,
                             cursor: 'pointer',
                             minHeight: '32px',
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             transition: 'all 0.15s ease',
-                            border: active ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.12)',
-                            background: active ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.04)',
-                            color: active ? '#38bdf8' : '#94a3b8',
+                            border: active ? '1px solid rgba(99, 102, 241, 0.5)' : '1px solid rgba(255,255,255,0.1)',
+                            background: active ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.04)',
+                            color: active ? '#a5b4fc' : '#94a3b8',
                           }}
                         >
                           {tag}

@@ -93,7 +93,12 @@ function GlobalThread({ meetingCode, selfPeerId, selfName, selfAvatar }: {
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           maxLength={300}
         />
-        <button className="chat-send-btn" onClick={handleSend} disabled={!draft.trim()}>↑</button>
+        <button className="chat-send-btn" onClick={handleSend} disabled={!draft.trim()} aria-label="Send message">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"/>
+            <polyline points="5 12 12 5 19 12"/>
+          </svg>
+        </button>
       </div>
     </>
   );
@@ -144,7 +149,11 @@ function DmThread({ meetingCode, selfPeerId, selfName, selfAvatar, other, onBack
   return (
     <>
       <div className="dm-thread-header">
-        <button className="dm-back-btn" onClick={onBack} aria-label="Back">←</button>
+        <button className="dm-back-btn" onClick={onBack} aria-label="Back">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
         <img src={otherAvatar} alt={other.displayName} className="dm-thread-avatar" />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="dm-thread-name">{other.displayName}</div>
@@ -188,7 +197,12 @@ function DmThread({ meetingCode, selfPeerId, selfName, selfAvatar, other, onBack
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           maxLength={300}
         />
-        <button className="chat-send-btn" onClick={handleSend} disabled={!draft.trim()}>↑</button>
+        <button className="chat-send-btn" onClick={handleSend} disabled={!draft.trim()} aria-label="Send direct message">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"/>
+            <polyline points="5 12 12 5 19 12"/>
+          </svg>
+        </button>
       </div>
     </>
   );
@@ -288,7 +302,12 @@ export function ChatPanel({
           <span className="chat-live-dot" />
           Messages
         </span>
-        <button className="chat-close" onClick={onClose} aria-label="Close chat">✕</button>
+        <button className="chat-close" onClick={onClose} aria-label="Close chat">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       <div className="chat-tabs">

@@ -144,7 +144,8 @@ export class StateMachine {
 
     case 'RoleChanged': {
       if (!state.room) return state;
-      if (!event.payload.peerId || !event.payload.newRole) return state;
+      const newRole = event.payload.newRole || (event.payload as any).role;
+      if (!event.payload.peerId || !newRole) return state;
       const peer = state.room.participants[event.payload.peerId];
       if (!peer) return state;
       return {
@@ -153,7 +154,7 @@ export class StateMachine {
           ...state.room,
           participants: {
             ...state.room.participants,
-            [event.payload.peerId]: { ...peer, role: event.payload.newRole },
+            [event.payload.peerId]: { ...peer, role: newRole },
           },
         },
       };

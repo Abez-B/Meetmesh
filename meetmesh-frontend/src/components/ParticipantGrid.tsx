@@ -14,10 +14,10 @@ interface Props {
 
 export function ParticipantGrid({ room, selfPeerId, onKick, onRole, onSelect, searchTerm }: Props) {
   const self   = selfPeerId ? room.participants[selfPeerId] : null;
-  const isHost = self?.role === 'Host';
+  const isHost = self?.role === 'Host' || (Boolean(selfPeerId) && room.hostPeerId === selfPeerId);
 
   const peers  = Object.values(room.participants)
-    .filter(p => !p.peerId.startsWith('present-'))
+    .filter(p => !p.peerId.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName.toLowerCase().includes('presentation'))
     .filter(p => !searchTerm || p.displayName.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
 
@@ -42,24 +42,41 @@ export function ParticipantGrid({ room, selfPeerId, onKick, onRole, onSelect, se
           </div>
 
           {isHost && p.peerId !== selfPeerId && (onKick || onRole) && (
-            <div className="participant-grid-actions">
+            <div className="participant-grid-actions" onClick={e => e.stopPropagation()}>
               <TooltipButton
                 text="Kick"
                 tooltip="Remove user"
                 variant="danger"
                 id={`kick-${p.peerId}`}
-                onClick={() => onKick?.(p.peerId)}
+                onClick={(e?: any) => {
+                  e?.stopPropagation?.();
+                  onKick?.(p.peerId);
+                }}
                 style={{ '--width': '70px', '--height': '32px' } as any}
               />
               <select
                 id={`role-${p.peerId}`}
                 value={p.role}
-                onChange={e => onRole?.(p.peerId, e.target.value)}
+                onClick={e => e.stopPropagation()}
+                onChange={e => {
+                  e.stopPropagation();
+                  onRole?.(p.peerId, e.target.value);
+                }}
                 className="mm-select"
-                style={{ background: 'rgba(255,255,255,0.04)', color: '#d4d4d4', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#f8fafc',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 6,
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
               >
                 {['Organizer', 'Speaker', 'Attendee'].map(r => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r} style={{ background: '#18181b', color: '#f8fafc' }}>
+                    {r}
+                  </option>
                 ))}
               </select>
             </div>

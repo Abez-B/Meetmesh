@@ -143,7 +143,7 @@ export default function LandingPage() {
             <motion.section className="mm-copy" {...fade}>
               <div className="mm-eyebrow">
                 <div className="mm-eyebrow-dot" />
-                In-Person Event Network
+                Live event directory
               </div>
 
               <h1 className="mm-title">
@@ -151,7 +151,7 @@ export default function LandingPage() {
               </h1>
 
               <p className="mm-subtitle">
-                we-inai gives your event an interactive participant directory. Attendees enter a 4-letter code or scan a QR code to view profiles, roles, and exchange contacts in real time.
+                we-inai gives your event an interactive participant directory. Attendees enter a 4-letter code or scan a QR to view profiles, roles, and contacts in real time.
               </p>
 
               <div className="mm-meta-row">
@@ -161,9 +161,9 @@ export default function LandingPage() {
 
               <div className="mm-proof-grid mm-desktop-proof">
                 {([
-                  ['Zero', 'app installs needed'],
-                  ['< 3s', 'instant code or QR entry'],
-                  ['Live', 'roles, profiles & chat'],
+                  ['No app', 'Works in any browser'],
+                  ['~2 seconds', 'Code or QR entry'],
+                  ['Real time', 'Profiles, roles & chat'],
                 ] as const).map(([val, lbl]) => (
                   <div className="mm-proof-card" key={val}>
                     <span className="mm-proof-val">{val}</span>
@@ -173,7 +173,7 @@ export default function LandingPage() {
               </div>
 
               <p className="mm-hint mm-desktop-proof">
-                Designed for meetups, founder dinners, conferences, and demo days.
+                Built for meetups, founder dinners, conferences, and demo days.
               </p>
             </motion.section>
 
@@ -278,10 +278,13 @@ export default function LandingPage() {
                           ) : hostPhoto === 'SKIP' ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                               <div style={{ 
-                                width: 56, height: 56, borderRadius: '50%', border: '1px dashed rgba(255,255,255,0.1)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, background: 'rgba(255,255,255,0.02)'
+                                width: 56, height: 56, borderRadius: '50%', border: '1px dashed rgba(255,255,255,0.15)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', background: 'rgba(255,255,255,0.03)'
                               }}>
-                                👤
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                                  <circle cx="12" cy="7" r="4"/>
+                                </svg>
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Photo skipped.</div>

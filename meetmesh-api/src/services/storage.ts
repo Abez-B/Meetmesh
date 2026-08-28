@@ -21,6 +21,7 @@ export interface SerializedMeeting {
   createdAt: number;
   messages: any[];
   participants: SerializedParticipant[];
+  kickedPeers?: string[];
 }
 
 export class StorageService {
@@ -100,6 +101,7 @@ export class StorageService {
           createdAt: meeting.createdAt || Date.now(),
           messages: meeting.messages || [],
           participants,
+          kickedPeers: meeting.kickedPeers ? Array.from(meeting.kickedPeers) : [],
         });
       }
 

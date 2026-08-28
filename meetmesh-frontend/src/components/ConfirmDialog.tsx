@@ -35,8 +35,6 @@ export function ConfirmDialog({
     }
   }, [isOpen, handleKeyDown]);
 
-  if (!isOpen) return null;
-
   const variantStyles = {
     danger: {
       border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -55,38 +53,37 @@ export function ConfirmDialog({
     },
   };
 
-
-      return (
-      <AnimatePresence>
-        {isOpen && (
-          <div className="confirm-dialog-overlay" onClick={onCancel}>
-            <motion.div
-              className="confirm-dialog"
-              initial={{ opacity: 0, scale: 0.95, y: -8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -8 }}
-              transition={{ duration: 0.18 }}
-              onClick={(e) => e.stopPropagation()}
-              style={variantStyles[variant]}
-            >
-              <h3 className="confirm-dialog-title">{title}</h3>
-              <p className="confirm-dialog-message">{message}</p>
-              <div className="confirm-dialog-actions">
-                <button className="confirm-dialog-cancel" onClick={onCancel} type="button">
-                  {cancelText}
-                </button>
-                <button
-                  className="confirm-dialog-confirm"
-                  style={{ backgroundColor: variantStyles[variant].confirmBg, color: variantStyles[variant].confirmText }}
-                  onClick={onConfirm}
-                  type="button"
-                >
-                  {confirmText}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      );
-      }
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="confirm-dialog-overlay" onClick={onCancel}>
+          <motion.div
+            className="confirm-dialog"
+            initial={{ opacity: 0, scale: 0.95, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            transition={{ duration: 0.18 }}
+            onClick={(e) => e.stopPropagation()}
+            style={variantStyles[variant]}
+          >
+            <h3 className="confirm-dialog-title">{title}</h3>
+            <p className="confirm-dialog-message">{message}</p>
+            <div className="confirm-dialog-actions">
+              <button className="confirm-dialog-cancel" onClick={onCancel} type="button">
+                {cancelText}
+              </button>
+              <button
+                className="confirm-dialog-confirm"
+                style={{ backgroundColor: variantStyles[variant].confirmBg, color: variantStyles[variant].confirmText }}
+                onClick={onConfirm}
+                type="button"
+              >
+                {confirmText}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}

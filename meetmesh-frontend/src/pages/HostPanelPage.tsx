@@ -20,6 +20,8 @@ import { Logo } from '../components/Logo';
 import { v4 as uuid } from 'uuid';
 import { copyToClipboard } from '../utils/clipboard';
 import { useUnreadDms, useUnreadGlobal } from '../mock/chatStore';
+import { ReactionBar, ReactionFloats } from '../components/ReactionLayer';
+import { reactionStore } from '../mock/reactionStore';
 import '../meetmesh-upgraded.css';
 import '../chat.css';
 
@@ -43,7 +45,9 @@ const HostTopbar = memo(function HostTopbar({
   isMobile?: boolean;
 }) {
   const elapsed = useElapsedTime(room.startedAt);
-  const count = Object.keys(room.participants).length;
+  const count = Object.values(room.participants).filter(
+    p => !p.peerId.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName?.toLowerCase().includes('presentation')
+  ).length;
 
   return (
     <div className="hp-topbar">
@@ -69,9 +73,12 @@ const HostTopbar = memo(function HostTopbar({
         <button
           className={`hp-btn-secondary hp-chat-btn${chatActive ? ' hp-btn-active' : ''}`}
           onClick={onChat}
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
-          💬 Chat
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Chat
           {chatHasUnread && <span className="hp-chat-unread-dot" />}
         </button>
         <button className="hp-btn-secondary" onClick={() => window.open(`/meeting/${code}`, '_blank')}>Stage View</button>
@@ -115,8 +122,15 @@ export default function HostPanelPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    if (code && (!state.room || state.phase === 'idle')) {
-      client.connect().then(() => {
+    if (!code || (state.room && state.phase !== 'idle')) return;
+
+    let cancelled = false;
+
+    const reconnect = async () => {
+      try {
+        await client.connect();
+        if (cancelled) return;
+
         const hostPeerForRoom = localStorage.getItem(`meetmesh_host_${code}`);
         const peerId = hostPeerForRoom
           || sessionStorage.getItem('meetmesh_peer_id')
@@ -135,10 +149,25 @@ export default function HostPanelPage() {
         sessionStorage.setItem('meetmesh_last_name', lastName);
         sessionStorage.setItem('meetmesh_last_profile_json', lastJson);
 
-        client.joinMeeting(code, lastName, peerId, lastJson).catch(console.error);
-      }).catch(console.error);
-    }
-  }, [code, client, state.phase, state.room]);
+        await client.joinMeeting(code, lastName, peerId, lastJson);
+      } catch (err) {
+        console.warn('[HostPanelPage] Reconnect failed:', err);
+        if (!cancelled) navigate('/');
+      }
+    };
+
+    reconnect();
+
+    // If still no room after 12s, give up and go home
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) navigate('/');
+    }, 12000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [code, client, state.phase, state.room, navigate]);
 
   // Prevent host from accidentally navigating away or closing window
   useEffect(() => {
@@ -173,12 +202,41 @@ export default function HostPanelPage() {
     }
   }, [state.room, state.selfPeerId, navigate, code]);
 
+  useEffect(() => {
+    const handleReaction = (payload: { peerId: string; displayName: string; emoji: string; avatarUrl?: string }) => {
+      if (payload.peerId === state.selfPeerId) return;
+      reactionStore.fire({
+        peerId: payload.peerId,
+        displayName: payload.displayName,
+        emoji: payload.emoji,
+        avatarUrl: payload.avatarUrl,
+      });
+    };
+
+    client.on('ReactionReceived', handleReaction);
+    return () => {
+      client.off('ReactionReceived', handleReaction);
+    };
+  }, [client, state.selfPeerId]);
+
   const participants = useMemo(
-    () => Object.values(state.room?.participants ?? {}),
+    () =>
+      Object.values(state.room?.participants ?? {}).filter(
+        p => !p.peerId.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName?.toLowerCase().includes('presentation')
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.room?.participants]
   );
 
+  const roleCounts = useMemo(() =>
+    participants.reduce<Record<string, number>>((acc, p) => {
+      acc[p.role] = (acc[p.role] || 0) + 1;
+      return acc;
+    }, {}),
+    [participants]
+  );
+
+  // ── All hooks above this line ──────────────────────────────
   if (!state.room || !code) {
     return <HostPanelSkeleton />;
   }
@@ -210,14 +268,6 @@ export default function HostPanelPage() {
     ? [...unreadDms].some(key => key.split('|').includes(state.selfPeerId!))
     : false;
   const hasUnread = unreadGlobal > 0 || hasUnreadDms;
-
-  const roleCounts = useMemo(() =>
-    participants.reduce<Record<string, number>>((acc, p) => {
-      acc[p.role] = (acc[p.role] || 0) + 1;
-      return acc;
-    }, {}),
-    [participants]
-  );
 
   const ROLE_COLORS: Record<string, string> = {
     Host: '#FFD700', Organizer: '#A78BFA', Speaker: '#60A5FA', Attendee: '#2DD4BF',
@@ -269,11 +319,10 @@ export default function HostPanelPage() {
               marginBottom: 16,
               padding: '10px 14px',
               borderRadius: '8px',
-              border: '1px solid rgba(245, 158, 11, 0.4)',
-              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              background: 'rgba(245, 158, 11, 0.1)',
               color: '#f59e0b',
-              fontFamily: 'monospace',
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
@@ -283,7 +332,11 @@ export default function HostPanelPage() {
               transition: 'all 0.2s',
             }}
           >
-            <span>📢</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 8.5c0 2.5-2.5 4.5-5 6.5l-5 3-5-3c-2.5-2-5-4-5-6.5C2 5.5 4.5 3 8 3c1.5 0 2.9.5 4 1.5C13.1 3.5 14.5 3 16 3c3.5 0 6 2.5 6 5.5z"/>
+              <path d="M12 17.5v4"/>
+              <path d="M8 21.5h8"/>
+            </svg>
             <span>Broadcast Announcement</span>
           </button>
 
@@ -442,19 +495,23 @@ export default function HostPanelPage() {
             onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 24 }}>📢</span>
-              <h3 style={{ margin: 0, fontSize: 18, color: '#f8fafc', fontFamily: 'monospace' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 8.5c0 2.5-2.5 4.5-5 6.5l-5 3-5-3c-2.5-2-5-4-5-6.5C2 5.5 4.5 3 8 3c1.5 0 2.9.5 4 1.5C13.1 3.5 14.5 3 16 3c3.5 0 6 2.5 6 5.5z"/>
+                <path d="M12 17.5v4"/>
+                <path d="M8 21.5h8"/>
+              </svg>
+              <h3 style={{ margin: 0, fontSize: 17, color: '#f8fafc', fontWeight: 600, letterSpacing: '-0.02em' }}>
                 Broadcast Announcement
               </h3>
             </div>
             <p style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
-              This alert will instantly pop up on every attendee's phone/screen with a notification chime.
+              This alert will instantly pop up on every attendee's phone/screen.
             </p>
             <textarea
               autoFocus
               value={broadcastText}
               onChange={e => setBroadcastText(e.target.value)}
-              placeholder="e.g. 🍕 Pizza is served! or ⚡ Lightning talks starting in 5 mins on Stage A."
+              placeholder="e.g. Pizza is served! or Lightning talks starting in 5 mins on Stage A."
               rows={3}
               style={{
                 width: '100%',
@@ -512,12 +569,26 @@ export default function HostPanelPage() {
                   opacity: broadcastText.trim() ? 1 : 0.5,
                 }}
               >
-                {broadcasting ? 'Sending...' : '📢 Send to All'}
+                {broadcasting ? 'Sending...' : 'Send to All'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <ReactionFloats />
+
+      <ReactionBar
+        selfPeerId={state.selfPeerId}
+        selfName={selfName}
+        selfAvatar={selfAvatar}
+        participants={participants}
+        onFire={(emoji) => {
+          if (code) {
+            client.sendReaction(code, emoji);
+          }
+        }}
+      />
     </div>
   );
 }

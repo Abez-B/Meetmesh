@@ -221,13 +221,12 @@ export function NodeInfoCard({ participant, visited, position, onClose, onMarkVi
               <span
                 key={t}
                 style={{
-                  padding: '2px 8px',
-                  borderRadius: '9999px',
-                  fontSize: '10.5px',
-                  fontFamily: 'monospace',
-                  background: 'rgba(56, 189, 248, 0.12)',
-                  color: '#38bdf8',
-                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  padding: '3px 9px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  color: '#a5b4fc',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
                 }}
               >
                 {t}
@@ -274,12 +273,16 @@ export function NodeInfoCard({ participant, visited, position, onClose, onMarkVi
             <button
               className="nodeinfo-msg-btn"
               onClick={() => { onMessage(); onClose(); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              💬 Message
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Message
             </button>
           )}
           <button className="nodeinfo-visit-btn" onClick={onMarkVisited}>
-            {visited ? 'Remove Visit' : 'Mark as Visited'}
+            {visited ? 'Remove Visit' : 'Mark Visited'}
           </button>
         </div>
       </motion.div>

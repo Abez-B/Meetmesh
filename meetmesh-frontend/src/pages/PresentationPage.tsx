@@ -25,7 +25,12 @@ export default function PresentationPage() {
   const normalizedCode = code?.toUpperCase() ?? '';
   
   const participants = useMemo(
-    () => (state.room ? Object.values(state.room.participants) : []),
+    () =>
+      state.room
+        ? Object.values(state.room.participants).filter(
+            p => !p.peerId.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName?.toLowerCase().includes('presentation')
+          )
+        : [],
     [state.room?.participants]
   );
 

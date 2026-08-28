@@ -275,7 +275,7 @@ function MeshGraphInner({
 
   useEffect(() => {
     const valid = participants
-      .filter(p => !p.peerId?.startsWith('present-'))
+      .filter(p => !p.peerId?.startsWith('present-') && (p.role as string) !== 'Presentation' && !p.displayName?.toLowerCase().includes('presentation'))
       .sort((a, b) => {
         const roleA = (a.role?.charAt(0).toUpperCase() + a.role?.slice(1).toLowerCase()) as ParticipantRole;
         const roleB = (b.role?.charAt(0).toUpperCase() + b.role?.slice(1).toLowerCase()) as ParticipantRole;
@@ -496,7 +496,11 @@ function MeshGraphInner({
     if (e.isPrimary === false) return;
     panRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
     svgRef.current?.classList.add('is-panning');
-    (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
+    try {
+      (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if pointer capture fails
+    }
   };
   const handlePanMove = (e: React.PointerEvent) => {
     if (!panRef.current.active || pinchRef.current.active) return;
@@ -508,7 +512,14 @@ function MeshGraphInner({
   const handlePanEnd = (e: React.PointerEvent) => {
     panRef.current.active = false;
     svgRef.current?.classList.remove('is-panning');
-    (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId);
+    try {
+      const target = e.currentTarget as SVGElement;
+      if (target?.hasPointerCapture?.(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore if pointer capture was already lost
+    }
   };
 
   // ── Pinch-to-zoom (native touch events on the container div) ───────────────

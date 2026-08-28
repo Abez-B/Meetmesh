@@ -14,5 +14,7 @@ export default defineConfig({
     port:         parseInt(process.env.PORT || '5173'),
     host:         '0.0.0.0',
     allowedHosts: true,
+    // Serve index.html for all routes so React Router handles them on refresh
+    historyApiFallback: true,
   },
 });

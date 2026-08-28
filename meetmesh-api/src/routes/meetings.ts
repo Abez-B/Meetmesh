@@ -23,6 +23,7 @@ interface Meeting {
   description?: string;
   hostPeerId: string;
   participants: Map<string, Participant>;
+  kickedPeers: Set<string>;
   waitingRoom: boolean;
   createdAt: number;
   messages: ChatMessage[];
@@ -90,6 +91,7 @@ storage.loadMeetings().then((restored) => {
       description: item.description,
       hostPeerId: item.hostPeerId,
       participants: participantsMap,
+      kickedPeers: new Set(item.kickedPeers || []),
       waitingRoom: item.waitingRoom,
       createdAt: item.createdAt,
       messages: item.messages || [],
@@ -213,6 +215,7 @@ export function setupSocketIO(server: HTTPServer) {
           description: data.description,
           hostPeerId: data.peerId,
           participants: new Map(),
+          kickedPeers: new Set(),
           waitingRoom: false,
           createdAt: Date.now(),
           messages: [],
@@ -274,6 +277,14 @@ export function setupSocketIO(server: HTTPServer) {
         if (!meeting) {
           socket.emit("Error", { code: "NOT_FOUND", detail: "Meeting not found" });
           if (callback) callback();
+          return;
+        }
+
+        // Check if peer was kicked/removed from this room
+        if (meeting.kickedPeers?.has(data.peerId)) {
+          socket.emit("Kicked", { meetingCode: code, reason: "You have been removed from this room by the host." });
+          socket.emit("Error", { code: "KICKED", detail: "You have been removed from this room by the host." });
+          if (callback) callback({ code: "KICKED", detail: "You have been removed from this room by the host." });
           return;
         }
 
@@ -472,11 +483,14 @@ export function setupSocketIO(server: HTTPServer) {
           return;
         }
 
+        if (!meeting.kickedPeers) meeting.kickedPeers = new Set();
+        meeting.kickedPeers.add(data.peerId);
+
         const participant = meeting.participants.get(data.peerId);
         if (participant) {
           const targetSocket = io.sockets.sockets.get(participant.connectionId);
           if (targetSocket) {
-            targetSocket.emit("Kicked", { meetingCode: code });
+            targetSocket.emit("Kicked", { meetingCode: code, reason: "You have been removed from this room by the host." });
             targetSocket.leave(code);
           }
           meeting.participants.delete(data.peerId);
@@ -515,7 +529,7 @@ export function setupSocketIO(server: HTTPServer) {
         const participant = meeting.participants.get(data.peerId);
         if (participant) {
           participant.role = data.newRole as any;
-          io.to(code).emit("RoleChanged", { peerId: data.peerId, role: data.newRole });
+          io.to(code).emit("RoleChanged", { peerId: data.peerId, role: data.newRole, newRole: data.newRole });
           storage.scheduleSave(meetings);
         }
 
